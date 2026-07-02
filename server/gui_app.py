@@ -384,9 +384,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._starting:
             return
         if getattr(self, "_start_error", None):
-            self._status(f"! {self._start_error}")
-            self._start_error = None
+            err, self._start_error = self._start_error, None
+            self._status(f"! {err}")
             self._set_running_ui(False)
+            QtWidgets.QMessageBox.warning(self, "Could not start", err)
         elif self.session.is_running and self.start_btn.text() != "Stop":
             self._set_running_ui(True)
 

@@ -28,6 +28,7 @@ gdown        # downloads the better checkpoints from Google Drive (large-file to
 
 # Live app (step 2+): webcam capture, push-to-talk, TTS, virtual-mic playback
 pynput       # global push-to-talk hotkey (no admin needed)
+pygrabber; platform_system == "Windows"   # real webcam device names (like Meet)
 sounddevice  # play synthesized audio into the VB-Cable virtual mic
 soundfile    # read WAV for playback
 piper-tts    # local neural TTS (default voice engine)

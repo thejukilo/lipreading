@@ -8,23 +8,26 @@ from .audio_out import list_output_devices
 
 
 def _camera_backends():
-    """Backends to try, best-first. On Windows MSMF is usually the reliable one;
-    DSHOW often warns 'can't be used to capture by index'. Try MSMF, then DSHOW,
-    then whatever OpenCV picks."""
+    """Backends to try, best-first. On Windows try DSHOW first because that's
+    how we enumerate names (pygrabber) — so the index matches the picked name —
+    then MSMF, then whatever OpenCV picks."""
     import cv2
 
     if sys.platform.startswith("win"):
-        return [("MSMF", cv2.CAP_MSMF), ("DSHOW", cv2.CAP_DSHOW), ("ANY", cv2.CAP_ANY)]
+        return [("DSHOW", cv2.CAP_DSHOW), ("MSMF", cv2.CAP_MSMF), ("ANY", cv2.CAP_ANY)]
     return [("ANY", cv2.CAP_ANY)]
 
 
 def open_camera(index: int, width: int = 640, height: int = 480):
     """Open camera ``index`` trying each backend, validating with a real read.
 
-    Returns ``(cap, backend_name)`` or ``(None, None)`` if none work. Validating
-    a frame read avoids handing back a half-open capture (which can crash the
-    reader thread on Windows).
+    Returns ``(cap, backend_name)`` or ``(None, None)`` if none work. Some
+    cameras (esp. the Logitech BRIO) take a moment to deliver the first frame,
+    so we retry the read for ~1.5s before giving up. Validating a frame avoids
+    handing back a half-open capture (which can crash the reader thread).
     """
+    import time
+
     import cv2
 
     for name, backend in _camera_backends():
@@ -37,21 +40,43 @@ def open_camera(index: int, width: int = 640, height: int = 480):
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             except Exception:
                 pass
-            for _ in range(10):  # give the device a moment to deliver a frame
+            for _ in range(30):  # ~1.5s warm-up window
                 ok, frame = cap.read()
                 if ok and frame is not None:
                     return cap, name
+                time.sleep(0.05)
         cap.release()
     return None, None
 
 
-def list_cameras(max_index: int = 6) -> list[tuple[int, str]]:
-    """Probe camera indices and return [(index, label), ...] for ones that open.
+def _windows_camera_names() -> list[str]:
+    """Real device names in DirectShow order (matches CAP_DSHOW index)."""
+    try:
+        import comtypes
 
-    OpenCV can't read friendly camera names cross-platform, so labels are
-    generic ("Camera 0 (MSMF)"). Probing opens each device briefly, so close
-    other apps using the webcam first for an accurate list.
+        comtypes.CoInitialize()  # we may be on a worker thread
+    except Exception:
+        pass
+    from pygrabber.dshow_graph import FilterGraph
+
+    return FilterGraph().get_input_devices()
+
+
+def list_cameras(max_index: int = 6) -> list[tuple[int, str]]:
+    """Return [(index, name), ...] of available cameras.
+
+    On Windows we read the real device names (Logitech BRIO, etc.) via DirectShow
+    — fast, no camera opening — just like the list Google Meet shows. Elsewhere
+    (or if that fails) we fall back to probing indices by opening them.
     """
+    if sys.platform.startswith("win"):
+        try:
+            names = _windows_camera_names()
+            if names:
+                return [(i, name) for i, name in enumerate(names)]
+        except Exception:
+            pass  # pygrabber missing/failed -> probe below
+
     found = []
     for idx in range(max_index):
         cap, name = open_camera(idx)
