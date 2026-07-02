@@ -269,7 +269,9 @@ class LiveSession:
         from .audio_out import play_wav
 
         try:
+            self._set_status("synthesizing voice…")
             wav = self.tts.synthesize_to_wav(text)
+            self._set_status("speaking…")
             play_wav(
                 wav,
                 device=self.out_device,

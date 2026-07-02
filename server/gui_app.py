@@ -413,8 +413,19 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._pending_cameras is not None:   # background scan finished
             cams, self._pending_cameras = self._pending_cameras, None
             self._apply_camera_scan(cams)
+
+        # Always mirror progress to the UI — including during Start (model load
+        # + voice warm-up), which is the slowest phase and needs feedback.
+        if self.session.last_status:
+            self.status.setText(self.session.last_status)
+
         if self._starting:
+            self.banner.setText("⏳ Starting — " + (self.session.last_status or "please wait…"))
+            self.banner.setStyleSheet(
+                "padding:6px; color:white; background:#f9a825; border-radius:4px;"
+            )
             return
+
         if getattr(self, "_start_error", None):
             err, self._start_error = self._start_error, None
             self._status(f"! {err}")
@@ -425,8 +436,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._update_preview()
         self._update_state()
-        if self.session.last_status:
-            self.status.setText(self.session.last_status)
 
     def _update_preview(self) -> None:
         import cv2  # local: heavy import, only once running
