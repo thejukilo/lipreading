@@ -16,4 +16,6 @@
 # transformers>=4.57. If you install a different coqui-tts version, install the
 # transformers it asks for instead (check: pip show coqui-tts).
 coqui-tts>=0.27
-transformers>=4.57
+# MUST cap below 5.0: transformers 5.x removed the compat shims coqui-tts 0.27.x
+# imports (e.g. isin_mps_friendly), and a bare ">=4.57" installs the latest 5.x.
+transformers>=4.57,<5
