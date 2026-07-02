@@ -210,7 +210,13 @@ class LiveApp:
 
         try:
             wav = self.tts.synthesize_to_wav(text)
-            play_wav(wav, device=self.out_device, blocking=True)
+            play_wav(
+                wav,
+                device=self.out_device,
+                monitor=not self.args.no_monitor,
+                monitor_device=self.args.monitor_device,
+                blocking=True,
+            )
             try:
                 os.remove(wav)
             except OSError:
@@ -343,6 +349,10 @@ def _build_parser() -> argparse.ArgumentParser:
                         "Use --list-audio-devices to see names.")
     p.add_argument("--auto-speak", action="store_true",
                    help="Speak immediately on release (skip the review step).")
+    p.add_argument("--no-monitor", action="store_true",
+                   help="Do NOT also play to your speakers (default: you hear a monitor of what's sent to Meet).")
+    p.add_argument("--monitor-device", default=None,
+                   help="Speakers/headphones for the monitor (name substring or index; default: system default output).")
     p.add_argument("--list-audio-devices", action="store_true",
                    help="List playback devices and exit.")
     return p

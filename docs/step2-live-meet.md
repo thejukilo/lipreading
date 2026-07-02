@@ -56,6 +56,22 @@ python -m server.live_app --auto-speak
 ```
 (Release → speaks immediately, no confirm. Fastest, but a misread goes out loud.)
 
+## Hearing what's being said
+
+Two things to know:
+
+1. **Meet never plays your own microphone back to you** — that's normal anti-echo
+   behavior. Even when it's working, *you* won't hear it in the call; the other
+   participants will. To truly verify what others hear, **join the same meeting
+   from a phone/second device** as another participant.
+2. **Local monitor (on by default):** the app also plays the synthesized audio to
+   your **speakers/headphones** so you hear exactly what was sent to Meet. Turn it
+   off with `--no-monitor`; choose a specific output with
+   `--monitor-device "Headphones"` (or an index from `--list-audio-devices`).
+
+So: the mic level moving in Meet = it's working. The monitor lets you hear it;
+a second participant confirms others hear it too.
+
 ## Options
 
 | Flag | Default | Notes |
@@ -64,6 +80,8 @@ python -m server.live_app --auto-speak
 | `--tts` | `piper` | `piper` (local, natural) or `sapi` (Windows built-in, robotic, no download). |
 | `--output-device` | `CABLE Input` | Playback device name substring or index. |
 | `--auto-speak` | off | Skip review; speak on release. |
+| `--no-monitor` | off | Stop also playing to your speakers (monitor is on by default). |
+| `--monitor-device` | default output | Which speakers/headphones hear the monitor. |
 | `--camera` | `0` | Webcam index if you have several. |
 | `--list-audio-devices` | — | Print playback device names/indices and exit. |
 | `--device` | auto | `cuda:0` or `cpu`. |

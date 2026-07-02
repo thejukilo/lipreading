@@ -66,16 +66,62 @@ def resolve_output_device(name_or_index: str | int | None) -> int | None:
     return idx
 
 
-def play_wav(wav_path: str, device: str | int | None = None, blocking: bool = True) -> None:
-    """Play a WAV file to ``device`` (name substring, index, or None=default)."""
+def _play_on_devices(data, samplerate: int, devices: list[int | None], blocking: bool) -> None:
+    """Play the same buffer to several output devices at once (one stream each)."""
+    import threading
+
+    import numpy as np
     import sounddevice as sd
+
+    if data.dtype != np.float32:
+        data = data.astype(np.float32)
+    channels = 1 if data.ndim == 1 else data.shape[1]
+
+    # De-dup while preserving order (default None is distinct from an explicit index).
+    seen, targets, errors = set(), [], []
+    for d in devices:
+        if d not in seen:
+            seen.add(d)
+            targets.append(d)
+
+    def worker(dev):
+        try:
+            with sd.OutputStream(samplerate=samplerate, device=dev,
+                                 channels=channels, dtype="float32") as stream:
+                stream.write(data)
+        except Exception as e:  # a bad monitor device shouldn't kill the mic feed
+            errors.append((dev, e))
+
+    threads = [threading.Thread(target=worker, args=(d,), daemon=True) for d in targets]
+    for t in threads:
+        t.start()
+    if blocking:
+        for t in threads:
+            t.join()
+    if errors:
+        msgs = "; ".join(f"device {d}: {e}" for d, e in errors)
+        raise RuntimeError(f"playback failed on {msgs}")
+
+
+def play_wav(
+    wav_path: str,
+    device: str | int | None = None,
+    monitor: bool = False,
+    monitor_device: str | int | None = None,
+    blocking: bool = True,
+) -> None:
+    """Play a WAV to ``device`` (the virtual mic); optionally also to speakers.
+
+    ``monitor=True`` additionally plays to ``monitor_device`` (default: system
+    default output = your headphones) so you can hear what's being sent to Meet.
+    """
     import soundfile as sf
 
     data, samplerate = sf.read(wav_path, dtype="float32", always_2d=False)
-    dev_idx = resolve_output_device(device)
-    sd.play(data, samplerate, device=dev_idx)
-    if blocking:
-        sd.wait()
+    targets = [resolve_output_device(device)]
+    if monitor:
+        targets.append(resolve_output_device(monitor_device))  # None -> default speakers
+    _play_on_devices(data, samplerate, targets, blocking)
 
 
 if __name__ == "__main__":
