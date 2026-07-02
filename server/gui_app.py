@@ -139,6 +139,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cleanup_key_edit = QtWidgets.QLineEdit()
         self.cleanup_key_edit.setPlaceholderText("Claude API key (stored locally)")
         self.cleanup_key_edit.setEchoMode(QtWidgets.QLineEdit.Password)
+        self.cleanup_ctx_edit = QtWidgets.QPlainTextEdit()
+        self.cleanup_ctx_edit.setPlaceholderText(
+            "Names & terms you use, e.g.  Juan, 1:1, case load, team chat, handover")
+        self.cleanup_ctx_edit.setMaximumHeight(56)
 
         self.refresh_btn = QtWidgets.QPushButton("Refresh devices")
 
@@ -153,6 +157,7 @@ class MainWindow(QtWidgets.QMainWindow):
         form.addRow("Text cleanup:", self.cleanup_cb)
         form.addRow("Cleanup model:", self.cleanup_model_cb)
         form.addRow("Claude API key:", self.cleanup_key_edit)
+        form.addRow("Cleanup context:", self.cleanup_ctx_edit)
         form.addRow("", self.auto_chk)
         form.addRow("", self.refresh_btn)
         self.mic_hint = QtWidgets.QLabel()
@@ -334,6 +339,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cleanup_model_cb.setCurrentText(self.cfg.corrector_model)
         self.cleanup_key_edit.setText(self.cfg.corrector_api_key)
         self.cleanup_key_edit.setEnabled(self.cfg.corrector == "anthropic")
+        self.cleanup_ctx_edit.setPlainText(self.cfg.corrector_context)
         self.auto_chk.setChecked(self.cfg.auto_speak)
 
     def _widgets_to_cfg(self) -> None:
@@ -348,6 +354,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cfg.corrector = CLEANUP_BACKENDS[self.cleanup_cb.currentText()]
         self.cfg.corrector_model = self.cleanup_model_cb.currentText().strip()
         self.cfg.corrector_api_key = self.cleanup_key_edit.text().strip()
+        self.cfg.corrector_context = self.cleanup_ctx_edit.toPlainText().strip()
         self.cfg.auto_speak = self.auto_chk.isChecked()
 
     @staticmethod
@@ -547,7 +554,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for w in (self.camera_cb, self.mic_cb, self.monitor_cb, self.voice_cb,
                   self.clone_engine_cb, self.refresh_btn, self.clone_btn,
                   self.del_voice_btn, self.cleanup_cb, self.cleanup_model_cb,
-                  self.cleanup_key_edit):
+                  self.cleanup_key_edit, self.cleanup_ctx_edit):
             w.setEnabled(not running)
 
     def _status(self, msg: str) -> None:

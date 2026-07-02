@@ -37,6 +37,21 @@ Runs at `http://localhost:11434`. Nothing leaves your machine.
 3. **Cleanup model** defaults to `claude-haiku-4-5` (fast + cheap — ideal for a
    one-sentence fix). You can set another model id if you prefer.
 
+## Cleanup context (names & jargon)
+
+The **Cleanup context** box lets you give the LLM the words from *your* world —
+colleague names, team terms, acronyms — so it fixes the transcript toward them
+instead of guessing. This is the single biggest win for real conversations:
+lipreading can't reliably read a name like "Juan", and without context the LLM
+might "correct" it to "John" or "one". List it and the LLM snaps to it.
+
+Example context:
+```
+Juan (colleague), 1:1, case load, team chat, handover, standup, sprint
+```
+Put in the names, projects, and phrases you say often. It only nudges — it won't
+force a term where it doesn't fit.
+
 ## How it behaves
 
 - Applies **after** transcription, **before** review/speaking. You'll see a

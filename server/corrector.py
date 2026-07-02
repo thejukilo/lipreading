@@ -42,6 +42,20 @@ _FEW_SHOT = [
 ]
 
 
+def _system_prompt(context: str = "") -> str:
+    """Base rules, plus the speaker's personal names/jargon if provided."""
+    context = (context or "").strip()
+    if not context:
+        return SYSTEM_PROMPT
+    return (
+        SYSTEM_PROMPT
+        + "\n\nSPEAKER CONTEXT — names, terms and jargon this person actually "
+        "uses. When a word is a likely misrecognition and one of these fits, "
+        "prefer it (e.g. a name the recognizer turned into a common word). Do "
+        "NOT force these in where they don't fit:\n" + context
+    )
+
+
 def _build_messages(text: str) -> list[dict]:
     msgs = []
     for user, assistant in _FEW_SHOT:
@@ -65,9 +79,10 @@ class OllamaCorrector(Corrector):
     """Local LLM via Ollama (http://localhost:11434). Private, no API key."""
 
     def __init__(self, model: str = "llama3.1:8b",
-                 host: str = "http://localhost:11434") -> None:
+                 host: str = "http://localhost:11434", context: str = "") -> None:
         self.model = model
         self.host = host.rstrip("/")
+        self.context = context
 
     def correct(self, text: str) -> str:
         text = (text or "").strip()
@@ -77,7 +92,8 @@ class OllamaCorrector(Corrector):
             "model": self.model,
             "stream": False,
             "options": {"temperature": 0},  # deterministic, minimal edits
-            "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + _build_messages(text),
+            "messages": [{"role": "system", "content": _system_prompt(self.context)}]
+            + _build_messages(text),
         }
         req = urllib.request.Request(
             f"{self.host}/api/chat",
@@ -100,9 +116,10 @@ class AnthropicCorrector(Corrector):
     """Cloud LLM via Claude (Anthropic SDK). Higher quality; needs an API key."""
 
     def __init__(self, model: str = "claude-haiku-4-5",
-                 api_key: str | None = None) -> None:
+                 api_key: str | None = None, context: str = "") -> None:
         self.model = model
         self._api_key = api_key or None  # None -> SDK reads ANTHROPIC_API_KEY
+        self.context = context
         self._client = None
 
     def _get_client(self):
@@ -125,7 +142,7 @@ class AnthropicCorrector(Corrector):
         msg = client.messages.create(
             model=self.model,
             max_tokens=256,
-            system=SYSTEM_PROMPT,
+            system=_system_prompt(self.context),
             messages=_build_messages(text),
         )
         out = "".join(b.text for b in msg.content if b.type == "text").strip()
@@ -152,13 +169,15 @@ def make_corrector(
     model: str = "",
     api_key: str = "",
     ollama_host: str = "http://localhost:11434",
+    context: str = "",
 ) -> Corrector:
     backend = (backend or "off").lower()
     if backend in ("off", "", "none"):
         return NoopCorrector()
     if backend == "ollama":
-        return OllamaCorrector(model=model or "llama3.1:8b", host=ollama_host)
+        return OllamaCorrector(model=model or "llama3.1:8b", host=ollama_host,
+                               context=context)
     if backend == "anthropic":
         return AnthropicCorrector(model=model or "claude-haiku-4-5",
-                                  api_key=api_key or None)
+                                  api_key=api_key or None, context=context)
     return NoopCorrector()

@@ -47,6 +47,7 @@ class SessionConfig:
     corrector_model: str = ""         # backend default if empty
     corrector_api_key: str = ""       # Claude backend; else uses $ANTHROPIC_API_KEY
     corrector_ollama_host: str = "http://localhost:11434"
+    corrector_context: str = ""       # names/jargon to bias the cleanup (e.g. "Juan")
 
 
 class LiveSession:
@@ -109,6 +110,7 @@ class LiveSession:
         self.corrector = make_corrector(
             self.cfg.corrector, model=self.cfg.corrector_model,
             api_key=self.cfg.corrector_api_key, ollama_host=self.cfg.corrector_ollama_host,
+            context=self.cfg.corrector_context,
         )
         self.out_device = resolve_output_device(self.cfg.output_device)
         self.monitor_on = self.cfg.monitor_on
