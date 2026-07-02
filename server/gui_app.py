@@ -562,9 +562,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.teach_del_btn = QtWidgets.QPushButton("Delete selected phrase")
         self.teach_del_btn.clicked.connect(self._teach_delete)
         self.teach_total = QtWidgets.QLabel("")
+        self.teach_open_btn = QtWidgets.QPushButton("Open clips folder")
+        self.teach_open_btn.clicked.connect(self._teach_open_folder)
+        self.teach_path_lbl = QtWidgets.QLabel(f"Saved in: {self.dataset.clips_dir}")
+        self.teach_path_lbl.setStyleSheet("color:#888; font-size:11px;")
+        self.teach_path_lbl.setWordWrap(True)
         right.addWidget(self.teach_list, 1)
         right.addWidget(self.teach_del_btn)
         right.addWidget(self.teach_total)
+        right.addWidget(self.teach_open_btn)
+        right.addWidget(self.teach_path_lbl)
 
         body.addLayout(left)
         body.addLayout(right, 1)
@@ -624,6 +631,21 @@ class MainWindow(QtWidgets.QMainWindow):
             self.teach_list.addItem(f"{g['phrase']}  —  {g['count']} rep(s)")
         n_clips, n_phrases = self.dataset.stats()
         self.teach_total.setText(f"{n_clips} clip(s) across {n_phrases} phrase(s)")
+
+    def _teach_open_folder(self) -> None:
+        import subprocess
+
+        path = self.dataset.clips_dir
+        os.makedirs(path, exist_ok=True)
+        try:
+            if sys.platform.startswith("win"):
+                os.startfile(path)  # noqa: S606 (Windows-only)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", path])
+            else:
+                subprocess.Popen(["xdg-open", path])
+        except Exception as e:
+            self.teach_status.setText(f"couldn't open folder: {e}")
 
     def _teach_delete(self) -> None:
         item = self.teach_list.currentItem()
