@@ -10,8 +10,10 @@
 # If pip wants to change your installed torch, pin torch to your current version
 # on the same command, e.g.:
 #   pip install -r requirements-voice.txt torch==<your-version>
-coqui-tts
-# coqui-tts needs transformers symbols isin_mps_friendly (>=4.46.3) AND
-# is_torch_greater_or_equal (>=4.47.1); and 4.50+ breaks it via the
-# GenerationMixin change. So the working window is 4.47.1–4.49.x (4.49.0 tested).
-transformers>=4.47.1,<4.50
+# Keep coqui-tts and transformers aligned: each coqui-tts release pins a
+# transformers range and imports version-specific symbols, so a mismatched
+# transformers fails at import. The latest coqui-tts (0.27.x) requires
+# transformers>=4.57. If you install a different coqui-tts version, install the
+# transformers it asks for instead (check: pip show coqui-tts).
+coqui-tts>=0.27
+transformers>=4.57
