@@ -133,10 +133,16 @@ class XttsTTS(TTSBackend):
             os.environ.setdefault("COQUI_TOS_AGREED", "1")
             try:
                 from TTS.api import TTS
-            except ImportError as e:
+            except Exception as e:
+                import sys
+
                 raise RuntimeError(
-                    "Voice cloning needs coqui-tts. Install it:\n"
-                    "  pip install coqui-tts\n"
+                    "Voice cloning couldn't load coqui-tts (the 'TTS' package).\n"
+                    f"Underlying error: {type(e).__name__}: {e}\n"
+                    f"App is running this Python:\n  {sys.executable}\n"
+                    "Most common cause: coqui-tts is installed in a DIFFERENT "
+                    "environment. Install it into the one above:\n"
+                    f'  "{sys.executable}" -m pip install coqui-tts\n'
                     "(first synthesis also downloads the ~1.8GB XTTS v2 model)."
                 ) from e
             import torch
