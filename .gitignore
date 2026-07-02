@@ -17,6 +17,9 @@ venv/
 env/
 *.egg-info/
 
+# Local machine-specific venv path for run.bat (never tracked)
+/.venvpath
+
 # OS / editor
 .DS_Store
 .idea/

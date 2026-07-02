@@ -5,10 +5,10 @@ setlocal
 cd /d "%~dp0"
 
 set "VENV="
-for %%D in ("%~dp0.venv" "%~dp0..\.venv" "%~dp0venv" "%~dp0..\venv") do (
+if exist "%~dp0.venvpath" set /p VENV=<"%~dp0.venvpath"
+if not defined VENV for %%D in ("%~dp0.venv" "%~dp0..\.venv" "%~dp0venv" "%~dp0..\venv") do (
   if not defined VENV if exist "%%~fD\Scripts\activate.bat" set "VENV=%%~fD"
 )
-REM set "VENV=C:\path\to\your\.venv"
 if not defined VENV (
   echo Could not find a virtual env (.venv) in "%~dp0" or its parent.
   echo Edit this file and set VENV to your venv folder.
