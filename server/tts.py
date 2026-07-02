@@ -182,7 +182,6 @@ class VoxCpmTTS(TTSBackend):
         prompt_text: str | None = None,
         cfg_value: float = 2.0,
         inference_timesteps: int = 10,
-        seed: int = 42,
     ) -> None:
         if not os.path.isfile(reference_wav):
             raise FileNotFoundError(f"Voice reference audio not found: {reference_wav}")
@@ -190,7 +189,6 @@ class VoxCpmTTS(TTSBackend):
         self.prompt_text = prompt_text
         self.cfg_value = cfg_value
         self.inference_timesteps = inference_timesteps
-        self.seed = seed
 
     @classmethod
     def _get_model(cls):
@@ -221,7 +219,7 @@ class VoxCpmTTS(TTSBackend):
             reference_wav_path=self.reference_wav,
             cfg_value=self.cfg_value,
             inference_timesteps=self.inference_timesteps,
-            seed=self.seed,
+            normalize=True,   # normalize numbers/abbreviations for cleaner speech
         )
         if self.prompt_text:  # "ultimate cloning" — reference audio + its transcript
             kwargs["prompt_wav_path"] = self.reference_wav
