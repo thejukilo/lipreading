@@ -50,6 +50,19 @@ if (Test-Path $ckpt) {
     gdown $ckptId -O $ckpt
 }
 
+$piperDir = Join-Path $modelDir "piper"
+New-Item -ItemType Directory -Force -Path $piperDir | Out-Null
+$piperOnnx = Join-Path $piperDir "en_US-lessac-medium.onnx"
+$piperJson = Join-Path $piperDir "en_US-lessac-medium.onnx.json"
+$piperBase = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium"
+if (Test-Path $piperOnnx) {
+    Write-Host "[setup] Piper voice already present"
+} else {
+    Write-Host "[setup] downloading Piper voice (en_US-lessac-medium)..."
+    Invoke-WebRequest -Uri "$piperBase/en_US-lessac-medium.onnx" -OutFile $piperOnnx
+    Invoke-WebRequest -Uri "$piperBase/en_US-lessac-medium.onnx.json" -OutFile $piperJson
+}
+
 $blaze = Join-Path $modelDir "blaze_face_short_range.tflite"
 if (Test-Path $blaze) {
     Write-Host "[setup] BlazeFace model already present at $blaze"

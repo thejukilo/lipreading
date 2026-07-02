@@ -34,6 +34,16 @@ else
   gdown "$ckpt_id" -O "$ckpt"   # handles Google Drive large-file confirm token
 fi
 
+piper_dir="$root/models/piper"; mkdir -p "$piper_dir"
+piper_base="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium"
+if [ -f "$piper_dir/en_US-lessac-medium.onnx" ]; then
+  echo "[setup] Piper voice already present"
+else
+  echo "[setup] downloading Piper voice (en_US-lessac-medium)..."
+  curl -L "$piper_base/en_US-lessac-medium.onnx" -o "$piper_dir/en_US-lessac-medium.onnx"
+  curl -L "$piper_base/en_US-lessac-medium.onnx.json" -o "$piper_dir/en_US-lessac-medium.onnx.json"
+fi
+
 blaze="$root/models/blaze_face_short_range.tflite"
 if [ -f "$blaze" ]; then
   echo "[setup] BlazeFace model already present"

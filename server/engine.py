@@ -60,6 +60,10 @@ class LipreadingEngine:
         ``"cuda:0"`` or ``"cpu"``.
     """
 
+    # Fewer frames than this can't be smoothed/cropped meaningfully by
+    # VideoProcess (window_margin) or read by the model. ~0.3s at 25 fps.
+    MIN_FRAMES = 8
+
     def __init__(
         self,
         checkpoint_path: str,
@@ -131,20 +135,37 @@ class LipreadingEngine:
 
     def transcribe(self, video_path: str) -> str:
         """Run mouth-crop + VSR on a video file and return decoded text."""
-        import torch
-
         video_path = os.path.abspath(video_path)
         if not os.path.isfile(video_path):
             raise FileNotFoundError(f"Video not found: {video_path}")
+        return self.transcribe_frames(self._load_video(video_path))
 
-        video = self._load_video(video_path)
-        landmarks = self.landmarks_detector(video)
-        if landmarks is None:
-            raise RuntimeError(
-                "No face/landmarks detected in the video — check framing, "
-                "lighting, and that a mouth is visible."
+    def transcribe_frames(self, frames) -> str:
+        """Run mouth-crop + VSR on in-memory frames and return decoded text.
+
+        ``frames``: a ``(T, H, W, 3)`` uint8 numpy array of **RGB** frames,
+        ideally at **25 fps** (auto_avsr was trained on 25 fps LRS3 clips —
+        feeding another rate degrades accuracy). This is the shared path used by
+        both the file smoke test and the live push-to-talk app.
+        """
+        import numpy as np
+        import torch
+
+        frames = np.ascontiguousarray(frames)
+        if frames.ndim != 4 or frames.shape[-1] != 3:
+            raise ValueError(
+                f"Expected frames of shape (T,H,W,3) RGB uint8, got {frames.shape}."
             )
-        video = self.video_process(video, landmarks)  # cropped mouth ROI
+        if frames.shape[0] < self.MIN_FRAMES:
+            raise RuntimeError(
+                f"Only {frames.shape[0]} frame(s) captured — too short to read. "
+                f"Hold the push-to-talk key longer (need >= {self.MIN_FRAMES})."
+            )
+
+        landmarks = self.landmarks_detector(frames)  # raises if no face anywhere
+        video = self.video_process(frames, landmarks)  # cropped mouth ROI
+        if video is None:
+            raise RuntimeError("Mouth crop failed (no usable landmarks).")
         video = torch.tensor(video).permute(0, 3, 1, 2)  # T,C,H,W
         video = self.video_transform(video).to(self.device)
 

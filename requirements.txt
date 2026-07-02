@@ -25,3 +25,10 @@ opencv-python
 scikit-image
 numpy
 gdown        # downloads the better checkpoints from Google Drive (large-file token)
+
+# Live app (step 2+): webcam capture, push-to-talk, TTS, virtual-mic playback
+pynput       # global push-to-talk hotkey (no admin needed)
+sounddevice  # play synthesized audio into the VB-Cable virtual mic
+soundfile    # read WAV for playback
+piper-tts    # local neural TTS (default voice engine)
+pyttsx3      # Windows SAPI5 fallback voice (no model download)

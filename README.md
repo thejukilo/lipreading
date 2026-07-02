@@ -42,17 +42,25 @@ everything around it:
 See [`docs/phase1-design.md`](docs/phase1-design.md) for the architecture and the
 vertical-slice build plan.
 
-## Getting started (Phase 1, step 1)
+## Getting started
 
-The first slice is a **model smoke test**: transcribe a recorded clip on your
-Windows + CUDA box to prove the auto_avsr pipeline works before building on it.
-
+Common setup (Windows + CUDA):
 ```powershell
 py -3.10 -m venv .venv; .\.venv\Scripts\Activate.ps1
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 pip install -r requirements.txt
-powershell -ExecutionPolicy Bypass -File scripts\setup_windows.ps1
-python -m server.engine --video media\demo.mp4 --checkpoint checkpoints\vsr_trlrs2lrs3vox2avsp_base.pth
+powershell -ExecutionPolicy Bypass -File scripts\setup_windows.ps1   # models + Piper voice
 ```
 
-Full walkthrough and troubleshooting: [`docs/step1-smoke-test.md`](docs/step1-smoke-test.md).
+**Step 1 — model smoke test** (transcribe a recorded clip; proves the pipeline):
+```powershell
+python -m server.engine --video media\demo.mp4 --checkpoint checkpoints\vsr_trlrs2lrs3vox2avsp_base.pth
+```
+→ [`docs/step1-smoke-test.md`](docs/step1-smoke-test.md)
+
+**Step 2–4 — live push-to-talk into Google Meet** (webcam → transcript → voice
+→ virtual mic). Needs VB-Cable installed; select **CABLE Output** as Meet's mic:
+```powershell
+python -m server.live_app          # hold RIGHT CTRL, mouth a sentence, review, speak
+```
+→ [`docs/step2-live-meet.md`](docs/step2-live-meet.md)

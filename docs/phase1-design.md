@@ -59,15 +59,17 @@ Google Meet ◄── virtual mic (VB-Cable) ◄── PCM ◄── TTS (prebui
 
 Order that keeps every step demoable:
 
-1. **Model smoke test** — load auto_avsr English checkpoint, transcribe a
+1. ✅ **Model smoke test** — load auto_avsr English checkpoint, transcribe a
    pre-recorded lip clip from disk. Confirms CUDA + weights + preprocessing.
-2. **Capture → transcript** — webcam + push-to-talk → lip crop → transcript in a
-   terminal. No audio yet.
-3. **Text → virtual mic** — type text → Piper → VB-Cable → hear it as the mic in
-   any app (test with Windows sound settings / a Meet test call).
-4. **Join the halves** — transcript from step 2 feeds TTS from step 3.
-5. **Extension shell** — Chrome extension that shows push-to-talk state +
-   transcript + edit/confirm, driving the local server. Demo in a real Meet.
+   (`server/engine.py`, verified — transcripts spot-on with the 20.3% WER model.)
+2. ✅ **Capture → transcript** — webcam + push-to-talk (25 fps) → lip crop →
+   transcript. (`server/live_app.py`)
+3. ✅ **Text → virtual mic** — Piper/SAPI TTS → VB-Cable → heard as the mic.
+   (`server/tts.py`, `server/audio_out.py`)
+4. ✅ **Join the halves** — the live app runs 2→3→4 as one push-to-talk loop
+   with a review/confirm step. *Pending on-device testing on Windows.*
+5. ⏳ **Extension shell** — Chrome extension that shows push-to-talk state +
+   transcript + edit/confirm, driving the local app over localhost. Demo in Meet.
 
 ## Open items (not blocking the slice)
 
