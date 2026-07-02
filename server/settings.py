@@ -19,6 +19,7 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 SAVED_FIELDS = (
     "camera", "tts", "voice", "clone_engine", "clone_timesteps", "output_device",
     "monitor_device", "monitor_on", "auto_speak", "device", "ptt_key",
+    "corrector", "corrector_model", "corrector_api_key", "corrector_ollama_host",
 )
 
 

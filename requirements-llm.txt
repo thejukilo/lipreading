@@ -1,0 +1,10 @@
+# Optional: LLM transcript cleanup (fixes lipreading homophone errors like
+# god->dog, beating->meeting). Turn it on in the app: Text cleanup dropdown.
+#
+# Claude (cloud) backend — install this, then set your API key in the app:
+#   pip install -r requirements-llm.txt
+anthropic
+
+# Local backend uses Ollama (https://ollama.com) instead — no Python package
+# needed. Install Ollama, then pull a model, e.g.:
+#   ollama pull llama3.1:8b

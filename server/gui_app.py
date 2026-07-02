@@ -36,6 +36,7 @@ PTT_KEYS = {
     "Space": "space", "F7": "f7", "F8": "f8", "F9": "f9", "F10": "f10",
 }
 CLONE_ENGINES = {"VoxCPM (recommended)": "voxcpm", "XTTS": "xtts"}
+CLEANUP_BACKENDS = {"Off": "off", "Local LLM (Ollama)": "ollama", "Claude (cloud)": "anthropic"}
 
 STATE_BANNER = {
     LiveSession.IDLE: ("Ready — hold your push-to-talk key and mouth a sentence", "#2e7d32"),
@@ -125,6 +126,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.key_cb = QtWidgets.QComboBox()
         self.key_cb.addItems(list(PTT_KEYS.keys()))
         self.auto_chk = QtWidgets.QCheckBox("Speak immediately (skip review)")
+
+        # LLM transcript cleanup
+        self.cleanup_cb = QtWidgets.QComboBox()
+        self.cleanup_cb.addItems(list(CLEANUP_BACKENDS.keys()))
+        self.cleanup_model_edit = QtWidgets.QLineEdit()
+        self.cleanup_model_edit.setPlaceholderText("default model")
+        self.cleanup_key_edit = QtWidgets.QLineEdit()
+        self.cleanup_key_edit.setPlaceholderText("Claude API key (stored locally)")
+        self.cleanup_key_edit.setEchoMode(QtWidgets.QLineEdit.Password)
+
         self.refresh_btn = QtWidgets.QPushButton("Refresh devices")
 
         form.addRow("Camera:", self.camera_cb)
@@ -135,6 +146,9 @@ class MainWindow(QtWidgets.QMainWindow):
         form.addRow("Cloning engine:", self.clone_engine_cb)
         form.addRow("Voice quality:", quality_row_w)
         form.addRow("Push-to-talk key:", self.key_cb)
+        form.addRow("Text cleanup:", self.cleanup_cb)
+        form.addRow("Cleanup model:", self.cleanup_model_edit)
+        form.addRow("Claude API key:", self.cleanup_key_edit)
         form.addRow("", self.auto_chk)
         form.addRow("", self.refresh_btn)
         self.mic_hint = QtWidgets.QLabel()
@@ -311,6 +325,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.quality_slider.setValue(self.cfg.clone_timesteps)
         self.quality_lbl.setText(str(self.cfg.clone_timesteps))
         self._select_key(self.key_cb, PTT_KEYS, self.cfg.ptt_key)
+        self._select_key(self.cleanup_cb, CLEANUP_BACKENDS, self.cfg.corrector)
+        self.cleanup_model_edit.setText(self.cfg.corrector_model)
+        self.cleanup_key_edit.setText(self.cfg.corrector_api_key)
         self.auto_chk.setChecked(self.cfg.auto_speak)
 
     def _widgets_to_cfg(self) -> None:
@@ -322,6 +339,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cfg.clone_engine = CLONE_ENGINES[self.clone_engine_cb.currentText()]
         self.cfg.clone_timesteps = self.quality_slider.value()
         self.cfg.ptt_key = PTT_KEYS[self.key_cb.currentText()]
+        self.cfg.corrector = CLEANUP_BACKENDS[self.cleanup_cb.currentText()]
+        self.cfg.corrector_model = self.cleanup_model_edit.text().strip()
+        self.cfg.corrector_api_key = self.cleanup_key_edit.text().strip()
         self.cfg.auto_speak = self.auto_chk.isChecked()
 
     @staticmethod
@@ -475,7 +495,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.talk_btn.setEnabled(running)
         for w in (self.camera_cb, self.mic_cb, self.monitor_cb, self.voice_cb,
                   self.clone_engine_cb, self.refresh_btn, self.clone_btn,
-                  self.del_voice_btn):
+                  self.del_voice_btn, self.cleanup_cb, self.cleanup_model_edit,
+                  self.cleanup_key_edit):
             w.setEnabled(not running)
 
     def _status(self, msg: str) -> None:

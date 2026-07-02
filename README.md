@@ -79,3 +79,11 @@ clip and speak in it. In the app: **Voice → ＋ Clone**. Optional install:
 pip install -r requirements-voice.txt
 ```
 → [`docs/voice-cloning.md`](docs/voice-cloning.md)
+
+**Text cleanup (LLM)** — fix lipreading homophone errors (god→dog, beating→
+meeting) with a language model. In the app: **Text cleanup** → Local (Ollama) or
+Claude. Optional install for the Claude backend:
+```powershell
+pip install -r requirements-llm.txt
+```
+→ [`docs/text-cleanup.md`](docs/text-cleanup.md)

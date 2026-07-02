@@ -112,6 +112,8 @@ def _cfg_from_args(a) -> SessionConfig:
         monitor_on=not a.no_monitor,
         auto_speak=a.auto_speak,
         ptt_key=a.key,
+        corrector=a.corrector,
+        corrector_model=a.corrector_model or "",
     )
 
 
@@ -135,6 +137,10 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Playback device name substring or index (default: VB-Cable).")
     p.add_argument("--monitor-device", default=None,
                    help="Speakers/headphones for the monitor (name substring or index).")
+    p.add_argument("--corrector", default="off", choices=["off", "ollama", "anthropic"],
+                   help="LLM cleanup of the transcript (fixes lipreading homophones).")
+    p.add_argument("--corrector-model", default=None,
+                   help="Cleanup model (default: llama3.1:8b for ollama, claude-haiku-4-5 for anthropic).")
     p.add_argument("--auto-speak", action="store_true",
                    help="Speak immediately on release (skip review).")
     p.add_argument("--no-monitor", action="store_true",

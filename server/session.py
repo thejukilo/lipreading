@@ -42,6 +42,11 @@ class SessionConfig:
     monitor_on: bool = True
     auto_speak: bool = False
     ptt_key: str = "ctrl_r"            # used by front-ends, not the session itself
+    # LLM transcript cleanup (fixes lipreading homophone errors)
+    corrector: str = "off"            # "off" | "ollama" | "anthropic"
+    corrector_model: str = ""         # backend default if empty
+    corrector_api_key: str = ""       # Claude backend; else uses $ANTHROPIC_API_KEY
+    corrector_ollama_host: str = "http://localhost:11434"
 
 
 class LiveSession:
@@ -67,6 +72,7 @@ class LiveSession:
 
         self.engine = None
         self.tts = None
+        self.corrector = None
         self.cap = None
         self.out_device = None
 
@@ -93,11 +99,16 @@ class LiveSession:
     def reconfigure_audio(self) -> None:
         """(Re)build the cheap audio bits from cfg — TTS engine, output, monitor."""
         from .audio_out import resolve_output_device
+        from .corrector import make_corrector
         from .tts import make_tts_for_voice
 
         self.tts = make_tts_for_voice(
             self.cfg.voice, clone_engine=self.cfg.clone_engine,
             clone_timesteps=self.cfg.clone_timesteps,
+        )
+        self.corrector = make_corrector(
+            self.cfg.corrector, model=self.cfg.corrector_model,
+            api_key=self.cfg.corrector_api_key, ollama_host=self.cfg.corrector_ollama_host,
         )
         self.out_device = resolve_output_device(self.cfg.output_device)
         self.monitor_on = self.cfg.monitor_on
@@ -248,6 +259,18 @@ class LiveSession:
             self._set_state(self.IDLE)
             return
         self._set_status(f"transcript ({len(frames)} frames, {dt:.1f}s)")
+
+        # Optional LLM cleanup of lipreading errors. Never block on failure —
+        # fall back to the raw transcript and surface the reason.
+        from .corrector import NoopCorrector
+
+        if self.corrector is not None and not isinstance(self.corrector, NoopCorrector):
+            self._set_state(self.BUSY)
+            self._set_status("polishing text…")
+            try:
+                text = (self.corrector.correct(text) or text).strip()
+            except Exception as e:
+                self._set_status(f"cleanup skipped: {e}")
 
         if self.cfg.auto_speak:
             self.speak(text)
