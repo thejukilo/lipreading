@@ -61,6 +61,8 @@ class LiveSession:
         self._buf_lock = threading.Lock()
         self._running = False
         self._cap_thread = None
+        self._open_event = threading.Event()
+        self._open_error = None
 
         self.engine = None
         self.tts = None
@@ -112,36 +114,35 @@ class LiveSession:
         return "cuda:0" if torch.cuda.is_available() else "cpu"
 
     def start(self) -> None:
-        """Open the camera and start the capture thread."""
-        import cv2
+        """Start the capture thread (which opens the camera) and wait for it.
 
+        The camera is opened *and* read on the one capture thread — opening on
+        one thread and reading on another can hard-crash OpenCV on Windows.
+        """
         if self._running:
             return
-        cam_api = cv2.CAP_DSHOW if sys.platform.startswith("win") else 0
-        self.cap = cv2.VideoCapture(self.cfg.camera, cam_api)
-        if not self.cap.isOpened():
-            raise RuntimeError(f"Cannot open camera index {self.cfg.camera}.")
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.cfg.width)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.cfg.height)
-        self.cap.set(cv2.CAP_PROP_FPS, 25)
-        try:
-            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        except Exception:
-            pass
+        self._open_error = None
+        self._open_event = threading.Event()
         self._running = True
         self._cap_thread = threading.Thread(target=self._capture_loop, daemon=True)
         self._cap_thread.start()
+        self._open_event.wait(timeout=15)  # wait for the camera to open (or fail)
+        if self._open_error:
+            self._running = False
+            raise RuntimeError(self._open_error)
+        if not self._open_event.is_set():
+            self._running = False
+            raise RuntimeError("Camera did not start in time — try again or pick another camera.")
 
     def stop(self) -> None:
-        """Stop capture and release the camera (keeps the model loaded)."""
+        """Stop capture (the thread releases the camera). Keeps the model loaded."""
         self._running = False
         self.recording = False
         if self._cap_thread is not None:
-            self._cap_thread.join(timeout=1.0)
+            self._cap_thread.join(timeout=3.0)
             self._cap_thread = None
-        if self.cap is not None:
-            self.cap.release()
-            self.cap = None
+        self.cap = None
+        self.latest_bgr = None
         self._set_state(self.IDLE)
 
     def shutdown(self) -> None:
@@ -152,21 +153,40 @@ class LiveSession:
     def _capture_loop(self) -> None:
         import cv2
 
+        from .devices import open_camera
+
+        cap, backend = open_camera(self.cfg.camera, self.cfg.width, self.cfg.height)
+        if cap is None:
+            self._open_error = (
+                f"Could not open camera {self.cfg.camera}. Close other apps using "
+                "the webcam (e.g. Google Meet), or pick a different camera and "
+                "press Refresh devices."
+            )
+            self._running = False
+            self._open_event.set()
+            return
+        self.cap = cap
+        self._set_status(f"camera {self.cfg.camera} open ({backend})")
+        self._open_event.set()
+
         period = 1.0 / 25.0
         next_keep = time.monotonic()
-        while self._running:
-            ok, frame = self.cap.read()
-            if not ok:
-                time.sleep(0.005)
-                continue
-            self.latest_bgr = frame
-            now = time.monotonic()
-            if now >= next_keep:
-                next_keep = max(next_keep + period, now - period)
-                if self.recording:
-                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    with self._buf_lock:
-                        self.utterance.append(rgb)
+        try:
+            while self._running:
+                ok, frame = cap.read()
+                if not ok or frame is None:
+                    time.sleep(0.005)
+                    continue
+                self.latest_bgr = frame
+                now = time.monotonic()
+                if now >= next_keep:
+                    next_keep = max(next_keep + period, now - period)
+                    if self.recording:
+                        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        with self._buf_lock:
+                            self.utterance.append(rgb)
+        finally:
+            cap.release()
 
     @property
     def frame_count(self) -> int:

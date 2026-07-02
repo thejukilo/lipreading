@@ -107,8 +107,11 @@ this app can't open it (and vice-versa). Options:
   shows exact names; VB-Cable device names must be present.
 - **`piper executable not found`** — `pip install piper-tts` put a `piper` on
   PATH inside the venv; make sure the venv is active, or use `--tts sapi`.
-- **Camera won't open** — another app (Meet!) owns it; see camera contention.
-  Try a different `--camera` index.
+- **Camera won't open / app closed on Start** — another app (Meet!) owns the
+  webcam, or the index is wrong. The app now tries multiple backends
+  (MSMF → DSHOW) and fails with a message instead of crashing. Close other apps
+  using the camera, press **Refresh devices**, and pick the camera that lists a
+  backend (e.g. "Camera 0 (MSMF)").
 - **Push-to-talk does nothing** — some security tools block global key hooks; try
   running the terminal as administrator, or pick a different `--key`.
 - **Transcript worse than the demo clip** — framing/lighting/rate. Face the
