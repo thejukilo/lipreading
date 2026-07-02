@@ -24,6 +24,11 @@ class TTSBackend:
         """Render ``text`` to a WAV file and return its path."""
         raise NotImplementedError
 
+    def warmup(self) -> None:
+        """Preload any heavy model so the first synthesis isn't slow. No-op by
+        default (Piper/SAPI are cheap); overridden by the neural backends."""
+        return None
+
 
 def _tmp_wav() -> str:
     fd, path = tempfile.mkstemp(suffix=".wav", prefix="tts_")
@@ -151,6 +156,9 @@ class XttsTTS(TTSBackend):
             cls._model = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
         return cls._model
 
+    def warmup(self) -> None:
+        self._get_model()
+
     def synthesize_to_wav(self, text: str, out_path: str | None = None) -> str:
         out_path = out_path or _tmp_wav()
         model = self._get_model()
@@ -209,6 +217,9 @@ class VoxCpmTTS(TTSBackend):
             cls._model = VoxCPM.from_pretrained("openbmb/VoxCPM2", load_denoiser=False)
         return cls._model
 
+    def warmup(self) -> None:
+        self._get_model()
+
     def synthesize_to_wav(self, text: str, out_path: str | None = None) -> str:
         import soundfile as sf
 
@@ -242,7 +253,9 @@ def make_tts(backend: str = "piper", **kwargs) -> TTSBackend:
     raise ValueError(f"Unknown TTS backend: {backend!r} (piper|sapi|xtts|voxcpm).")
 
 
-def make_tts_for_voice(voice_id: str, store=None, clone_engine: str = "voxcpm") -> TTSBackend:
+def make_tts_for_voice(
+    voice_id: str, store=None, clone_engine: str = "voxcpm", clone_timesteps: int = 10
+) -> TTSBackend:
     """Resolve a voice id to a TTS backend.
 
     Voice ids: ``"piper"``, ``"sapi"``, or ``"clone:<slug>"`` (a cloned voice
@@ -258,6 +271,7 @@ def make_tts_for_voice(voice_id: str, store=None, clone_engine: str = "voxcpm") 
         ref = store.get_reference(slug)
         if clone_engine == "xtts":
             return XttsTTS(speaker_wav=ref)
-        return VoxCpmTTS(reference_wav=ref, prompt_text=store.get_prompt_text(slug))
+        return VoxCpmTTS(reference_wav=ref, prompt_text=store.get_prompt_text(slug),
+                         inference_timesteps=clone_timesteps)
     # Unknown/stale selection -> safe default.
     return make_tts("piper")

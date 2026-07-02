@@ -75,6 +75,15 @@ def _play_on_devices(data, samplerate: int, devices: list[int | None], blocking:
 
     if data.dtype != np.float32:
         data = data.astype(np.float32)
+
+    # Prepend a short silence so a cold output device's warm-up drops the
+    # silence instead of the first word (fixes "only heard the last part").
+    lead = int(0.30 * samplerate)
+    if lead > 0:
+        pad = (np.zeros(lead, dtype=np.float32) if data.ndim == 1
+               else np.zeros((lead, data.shape[1]), dtype=np.float32))
+        data = np.concatenate([pad, data], axis=0)
+
     channels = 1 if data.ndim == 1 else data.shape[1]
 
     # De-dup while preserving order (default None is distinct from an explicit index).

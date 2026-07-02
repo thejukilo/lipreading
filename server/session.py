@@ -36,6 +36,7 @@ class SessionConfig:
     tts: str = "piper"                 # built-in engine (CLI --tts); see `voice`
     voice: str = "piper"               # selector: "piper" | "sapi" | "clone:<slug>"
     clone_engine: str = "voxcpm"       # cloned-voice engine: "voxcpm" | "xtts"
+    clone_timesteps: int = 10          # VoxCPM inference steps; lower = faster, rougher
     output_device: str | int | None = "CABLE Input"   # the virtual mic
     monitor_device: str | int | None = None            # None -> default speakers
     monitor_on: bool = True
@@ -94,9 +95,22 @@ class LiveSession:
         from .audio_out import resolve_output_device
         from .tts import make_tts_for_voice
 
-        self.tts = make_tts_for_voice(self.cfg.voice, clone_engine=self.cfg.clone_engine)
+        self.tts = make_tts_for_voice(
+            self.cfg.voice, clone_engine=self.cfg.clone_engine,
+            clone_timesteps=self.cfg.clone_timesteps,
+        )
         self.out_device = resolve_output_device(self.cfg.output_device)
         self.monitor_on = self.cfg.monitor_on
+
+        # Preload the (heavy) neural voice model now, during Start, so the first
+        # play isn't slow. Failures here shouldn't block Start — they'll surface
+        # clearly at synth time instead.
+        try:
+            self._set_status("warming up voice…")
+            self.tts.warmup()
+            self._set_status("ready")
+        except Exception as e:
+            self._set_status(f"voice warmup deferred: {e}")
 
     @property
     def is_loaded(self) -> bool:
