@@ -21,9 +21,12 @@ from .corrector import CLAUDE_MODELS, list_ollama_models
 from .dataset import TrainingStore
 from .devices import list_audio_outputs, list_cameras
 from .hotkey import PushToTalkListener
-from .session import LiveSession
+from .session import LiveSession, SessionConfig
 from .settings import load_config, save_config
 from .voices import VoicesStore
+
+BASE_CKPT = SessionConfig().checkpoint             # the shipped base model path
+PERSONALIZED_CKPT = "checkpoints/personalized.pth"  # produced by fine-tuning
 
 # A short, phonetically varied passage for recording a clean voice reference.
 RECORD_PASSAGE = (
@@ -58,6 +61,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dataset = TrainingStore()
         self.session = LiveSession(self.cfg)
         self._teach_recording = False
+        self._training = False
+        self._train_msg = None
+        self._train_done = False
         self.ptt = PushToTalkListener(self.cfg.ptt_key, self._ptt_down, self._ptt_up)
         self._starting = False
         self._last_state = None
@@ -70,6 +76,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._populate_audio()
         self._populate_cameras_default()   # fast; real scan runs in background
         self._populate_voices()
+        self._populate_recog_models()
         self._apply_cfg_to_widgets()
         self._populate_cleanup_models(self.cfg.corrector)
         self._set_running_ui(False)
@@ -97,6 +104,7 @@ class MainWindow(QtWidgets.QMainWindow):
         setup = QtWidgets.QGroupBox("Setup")
         form = QtWidgets.QFormLayout(setup)
         self.camera_cb = QtWidgets.QComboBox()
+        self.recog_model_cb = QtWidgets.QComboBox()
         self.mic_cb = QtWidgets.QComboBox()
         self.monitor_chk = QtWidgets.QCheckBox("Hear it on my speakers (monitor)")
         self.monitor_cb = QtWidgets.QComboBox()
@@ -151,6 +159,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.refresh_btn = QtWidgets.QPushButton("Refresh devices")
 
         form.addRow("Camera:", self.camera_cb)
+        form.addRow("Recognition model:", self.recog_model_cb)
         form.addRow("Microphone to Meet:", self.mic_cb)
         form.addRow("", self.monitor_chk)
         form.addRow("Monitor speakers:", self.monitor_cb)
@@ -338,6 +347,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._status(f"deleted voice '{slug}'")
 
     def _apply_cfg_to_widgets(self) -> None:
+        self._select_data(self.recog_model_cb, self.cfg.checkpoint)
         self._select_data(self.camera_cb, self.cfg.camera)
         if self.cfg.output_device is not None:
             self._select_text_contains(self.mic_cb, str(self.cfg.output_device))
@@ -356,6 +366,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.auto_chk.setChecked(self.cfg.auto_speak)
 
     def _widgets_to_cfg(self) -> None:
+        self.cfg.checkpoint = self.recog_model_cb.currentData() or BASE_CKPT
         self.cfg.camera = self.camera_cb.currentData() if self.camera_cb.currentData() is not None else 0
         self.cfg.output_device = self.mic_cb.currentData()
         self.cfg.monitor_on = self.monitor_chk.isChecked()
@@ -464,6 +475,64 @@ class MainWindow(QtWidgets.QMainWindow):
         tts = getattr(self.session, "tts", None)
         if tts is not None and hasattr(tts, "inference_timesteps"):
             tts.inference_timesteps = value
+
+    def _populate_recog_models(self) -> None:
+        """Base always; Personalized only if a fine-tuned checkpoint exists."""
+        keep = self.recog_model_cb.currentData() if self.recog_model_cb.count() else self.cfg.checkpoint
+        self.recog_model_cb.blockSignals(True)
+        self.recog_model_cb.clear()
+        self.recog_model_cb.addItem("Base (shipped)", BASE_CKPT)
+        if os.path.isfile(PERSONALIZED_CKPT):
+            self.recog_model_cb.addItem("Personalized (yours)", PERSONALIZED_CKPT)
+        self._select_data(self.recog_model_cb, keep)
+        self.recog_model_cb.blockSignals(False)
+
+    def _teach_train(self) -> None:
+        if self._training:
+            return
+        n_clips, n_phrases = self.dataset.stats()
+        if n_clips < 4:
+            QtWidgets.QMessageBox.information(
+                self, "Fine-tune",
+                f"Only {n_clips} clip(s) so far. Record several phrases with a few "
+                "reps each first (more and more varied = better).")
+            return
+        if self.session.is_running:
+            QtWidgets.QMessageBox.information(
+                self, "Fine-tune",
+                "Turn the camera off first (Teach tab) so training has the full GPU.")
+            return
+        if QtWidgets.QMessageBox.question(
+            self, "Fine-tune",
+            f"Train a personalized model on {n_clips} clip(s) across {n_phrases} "
+            "phrase(s)? This uses your GPU for a few minutes. The base model is "
+            "kept; a separate 'Personalized' model is created."
+        ) != QtWidgets.QMessageBox.Yes:
+            return
+
+        self._training = True
+        self._train_done = False
+        self._train_msg = "starting…"
+        self.teach_train_btn.setEnabled(False)
+
+        def worker():
+            try:
+                from .finetune import finetune
+                finetune(
+                    self.dataset, checkpoint_path=BASE_CKPT, out_path=PERSONALIZED_CKPT,
+                    auto_avsr_dir=self.cfg.auto_avsr_dir, detector=self.cfg.detector,
+                    device=self.cfg.device,
+                    on_progress=lambda s: setattr(self, "_train_msg", s),
+                )
+                self._train_msg = ("✓ done — pick 'Personalized' as the Recognition "
+                                   "model on the Speak tab, then Start")
+                self._train_done = True
+            except Exception as e:
+                self._train_msg = f"! training failed: {e}"
+            finally:
+                self._training = False
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _on_cleanup_backend_changed(self, label: str) -> None:
         backend = CLEANUP_BACKENDS.get(label, "off")
@@ -576,6 +645,13 @@ class MainWindow(QtWidgets.QMainWindow):
         body.addLayout(left)
         body.addLayout(right, 1)
         lay.addLayout(body)
+
+        self.teach_train_btn = QtWidgets.QPushButton("⚙ Fine-tune a personalized model")
+        self.teach_train_btn.setToolTip(
+            "Train a personalized copy of the model on your clips (uses your GPU). "
+            "The base model is not changed.")
+        self.teach_train_btn.clicked.connect(self._teach_train)
+        lay.addWidget(self.teach_train_btn)
         self._refresh_teach_list()
         return w
 
@@ -667,6 +743,13 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._pending_cleanup_models is not None:   # Ollama probe finished
             models, self._pending_cleanup_models = self._pending_cleanup_models, None
             self._apply_cleanup_models(models)
+        if self._train_msg is not None:                # fine-tuning progress
+            self.teach_status.setText(self._train_msg)
+        if not self._training and not self.teach_train_btn.isEnabled():
+            self.teach_train_btn.setEnabled(True)
+        if self._train_done:                            # a personalized model appeared
+            self._train_done = False
+            self._populate_recog_models()
 
         # Always mirror progress to the UI — including during Start (model load
         # + voice warm-up), which is the slowest phase and needs feedback.
@@ -734,7 +817,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.start_btn.setEnabled(True)
         self.start_btn.setText("Stop" if running else "Start")
         self.talk_btn.setEnabled(running)
-        for w in (self.camera_cb, self.mic_cb, self.monitor_cb, self.voice_cb,
+        for w in (self.camera_cb, self.recog_model_cb, self.mic_cb, self.monitor_cb, self.voice_cb,
                   self.clone_engine_cb, self.refresh_btn, self.clone_btn,
                   self.del_voice_btn, self.cleanup_cb, self.cleanup_model_cb,
                   self.cleanup_key_edit, self.cleanup_ctx_edit):

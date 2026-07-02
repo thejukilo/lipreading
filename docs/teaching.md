@@ -5,10 +5,12 @@ like "Juan", team jargon). The **Teach** tab lets you build a small dataset of
 yourself saying your own words, which a later **fine-tuning** step uses to adapt
 the model to you — proper personalization, not a post-hoc text fix.
 
-This is built in two stages:
-- **Stage 1 — collect (this):** record and label examples. Available now.
-- **Stage 2 — fine-tune (next):** train on your examples to produce a separate
-  **Personalized** model you select in the app; the base model stays untouched.
+Two stages, both available now:
+- **Stage 1 — collect:** record and label examples (Teach tab, or ＋ Add to
+  training on the Speak tab).
+- **Stage 2 — fine-tune:** the **⚙ Fine-tune a personalized model** button trains
+  on your examples and saves a separate **Personalized** model; the base model is
+  never touched. Pick it under **Recognition model** on the Speak tab.
 
 ## Collecting examples (Teach tab)
 
@@ -53,9 +55,22 @@ personal set over time, not a one-shot fix.
 - The base model is never overwritten. Fine-tuning produces a separate model you
   can switch to, compare against, and delete if a run isn't better.
 
-## Next
+## Fine-tuning (Stage 2)
 
-Once you've collected a decent set, the fine-tuning step will: reprocess your
-clips through the mouth-crop pipeline, lightly adapt the base checkpoint on them
-(low learning rate, few steps, on your CUDA GPU), and save
-`checkpoints/personalized.pth` — selectable as a "Personalized" model.
+When you've collected a decent set (at least a few clips; more is better):
+
+1. On the Teach tab, **turn the camera off** (so training has the full GPU).
+2. Click **⚙ Fine-tune a personalized model**. Progress shows in the status line
+   (preparing clips → per-epoch loss → done). It runs on your CUDA GPU.
+3. It saves `checkpoints/personalized.pth`. On the **Speak** tab, set
+   **Recognition model → Personalized (yours)**, then **Start**.
+
+What it does under the hood: reprocesses your clips through the same mouth-crop
+pipeline as inference, then lightly adapts the base checkpoint (low learning
+rate, few epochs, gradient clipping) so it nudges toward your face/vocabulary
+without forgetting general English. The base model is untouched — switch back to
+**Base** anytime, or delete `personalized.pth` to discard a bad run and retrain.
+
+> Fine-tuning always starts from the **base** model (not a previous personalized
+> one), so re-training with more data doesn't compound drift. Tune amount/epochs
+> by collecting more data rather than training repeatedly.
