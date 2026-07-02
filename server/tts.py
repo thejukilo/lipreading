@@ -163,6 +163,74 @@ class XttsTTS(TTSBackend):
         return out_path
 
 
+class VoxCpmTTS(TTSBackend):
+    """Zero-shot voice cloning via VoxCPM2 (openbmb/VoxCPM2).
+
+    Tokenizer-free, context-aware TTS — generally more natural/expressive than
+    XTTS. Clones from a reference clip; if the reference transcript is known
+    (``prompt_text``) it uses VoxCPM's higher-quality "ultimate cloning".
+
+    Needs torch >= 2.5 and CUDA >= 12. The (large) model is cached at class level
+    and loaded on first use.
+    """
+
+    _model = None  # shared across instances
+
+    def __init__(
+        self,
+        reference_wav: str,
+        prompt_text: str | None = None,
+        cfg_value: float = 2.0,
+        inference_timesteps: int = 10,
+        seed: int = 42,
+    ) -> None:
+        if not os.path.isfile(reference_wav):
+            raise FileNotFoundError(f"Voice reference audio not found: {reference_wav}")
+        self.reference_wav = reference_wav
+        self.prompt_text = prompt_text
+        self.cfg_value = cfg_value
+        self.inference_timesteps = inference_timesteps
+        self.seed = seed
+
+    @classmethod
+    def _get_model(cls):
+        if cls._model is None:
+            try:
+                from voxcpm import VoxCPM
+            except Exception as e:
+                import sys
+
+                raise RuntimeError(
+                    "Voice cloning (VoxCPM) couldn't load the 'voxcpm' package.\n"
+                    f"Underlying error: {type(e).__name__}: {e}\n"
+                    f"App is running this Python:\n  {sys.executable}\n"
+                    "Install it into that environment (needs torch >= 2.5, CUDA >= 12):\n"
+                    f'  "{sys.executable}" -m pip install voxcpm\n'
+                    "(first synthesis also downloads the VoxCPM2 model)."
+                ) from e
+            cls._model = VoxCPM.from_pretrained("openbmb/VoxCPM2", load_denoiser=False)
+        return cls._model
+
+    def synthesize_to_wav(self, text: str, out_path: str | None = None) -> str:
+        import soundfile as sf
+
+        out_path = out_path or _tmp_wav()
+        model = self._get_model()
+        kwargs = dict(
+            text=text,
+            reference_wav_path=self.reference_wav,
+            cfg_value=self.cfg_value,
+            inference_timesteps=self.inference_timesteps,
+            seed=self.seed,
+        )
+        if self.prompt_text:  # "ultimate cloning" — reference audio + its transcript
+            kwargs["prompt_wav_path"] = self.reference_wav
+            kwargs["prompt_text"] = self.prompt_text
+        wav = model.generate(**kwargs)
+        sf.write(out_path, wav, model.tts_model.sample_rate)
+        return out_path
+
+
 def make_tts(backend: str = "piper", **kwargs) -> TTSBackend:
     backend = backend.lower()
     if backend == "piper":
@@ -171,14 +239,16 @@ def make_tts(backend: str = "piper", **kwargs) -> TTSBackend:
         return SapiTTS(**kwargs)
     if backend == "xtts":
         return XttsTTS(**kwargs)
-    raise ValueError(f"Unknown TTS backend: {backend!r} (use 'piper', 'sapi', 'xtts').")
+    if backend == "voxcpm":
+        return VoxCpmTTS(**kwargs)
+    raise ValueError(f"Unknown TTS backend: {backend!r} (piper|sapi|xtts|voxcpm).")
 
 
-def make_tts_for_voice(voice_id: str, store=None) -> TTSBackend:
+def make_tts_for_voice(voice_id: str, store=None, clone_engine: str = "voxcpm") -> TTSBackend:
     """Resolve a voice id to a TTS backend.
 
     Voice ids: ``"piper"``, ``"sapi"``, or ``"clone:<slug>"`` (a cloned voice
-    from the VoicesStore).
+    from the VoicesStore). Cloned voices use ``clone_engine`` ("voxcpm" | "xtts").
     """
     if voice_id in ("piper", "sapi"):
         return make_tts(voice_id)
@@ -187,6 +257,9 @@ def make_tts_for_voice(voice_id: str, store=None) -> TTSBackend:
 
         store = store or VoicesStore()
         slug = voice_id.split(":", 1)[1]
-        return XttsTTS(speaker_wav=store.get_reference(slug))
+        ref = store.get_reference(slug)
+        if clone_engine == "xtts":
+            return XttsTTS(speaker_wav=ref)
+        return VoxCpmTTS(reference_wav=ref, prompt_text=store.get_prompt_text(slug))
     # Unknown/stale selection -> safe default.
     return make_tts("piper")

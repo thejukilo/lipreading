@@ -1,9 +1,12 @@
 # Voice cloning (Phase 2)
 
 Make the spoken output sound like **your** voice. You give the app a short
-reference clip (record it in-app or upload a WAV); it clones your voice with
-**Coqui XTTS v2** — zero-shot, no training — and uses it for everything you
-"say" in Meet.
+reference clip (record it in-app or upload a WAV); it clones your voice —
+zero-shot, no training — and uses it for everything you "say" in Meet.
+
+Two engines are available (pick under **Cloning engine**):
+- **VoxCPM** (default) — tokenizer-free, more natural/expressive. Needs torch ≥ 2.5.
+- **XTTS** (Coqui) — the earlier option; non-commercial model license.
 
 ## One-time install
 
@@ -12,14 +15,26 @@ CUDA-torch setup):
 ```powershell
 pip install -r requirements-voice.txt
 ```
-The first time you actually use a cloned voice, XTTS downloads its ~1.8GB model
-to your TTS cache (once). A CUDA GPU makes synthesis fast; CPU works but is slow.
 
-> **License:** the XTTS v2 model is under the Coqui Public Model License (CPML),
-> which is **non-commercial**. Fine for personal use and development. If this
-> becomes a product, swap the clone engine (e.g. OpenVoice v2 = MIT, or
-> ElevenLabs' commercial cloning API) — it lives behind the same interface, so
-> it's a contained change.
+**VoxCPM needs torch ≥ 2.5 and CUDA ≥ 12.** Check yours:
+```powershell
+python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+```
+If it's older than 2.5, upgrade with the CUDA wheel (keeps GPU support):
+```powershell
+pip install -U torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+```
+The first time you use a cloned voice, the model downloads once (a GB or two).
+A CUDA GPU makes synthesis fast; CPU is slow.
+
+> **Best-quality cloning:** when you **record** in-app you read a known passage,
+> so the app feeds VoxCPM that transcript automatically ("ultimate cloning").
+> Uploaded clips clone from audio only (still good, slightly less similar).
+
+> **Licenses:** VoxCPM — check the OpenBMB model card for terms. XTTS v2 — Coqui
+> Public Model License (CPML), **non-commercial**. Both fine for personal use;
+> for a product, confirm terms or use a commercially-licensed engine (the TTS
+> layer is pluggable, so swapping is contained).
 
 ## Clone a voice (in the app)
 
@@ -34,8 +49,9 @@ to your TTS cache (once). A CUDA GPU makes synthesis fast; CPU works but is slow
    later ones are quick.
 5. **Save**. The voice appears in the **Voice** dropdown as "🗣 <name> (your voice)".
 
-Select it in the dropdown, then **Stop → Start** to apply it. From then on,
-everything you mouth is spoken in your voice.
+Select it in the dropdown, choose your **Cloning engine** (VoxCPM by default),
+then **Stop → Start** to apply it. From then on, everything you mouth is spoken
+in your voice. Switching the cloning engine also needs a Stop → Start.
 
 Voices are stored under `~/.lipreading/voices/<slug>/reference.wav`. Delete one
 with the **Delete** button next to the Voice dropdown.

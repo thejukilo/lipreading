@@ -121,7 +121,10 @@ class LipreadingEngine:
 
         self.video_transform = VideoTransform(subset="test")
 
-        ckpt = torch.load(self.checkpoint_path, map_location="cpu")
+        # weights_only=False explicitly: the auto_avsr checkpoint is a trusted
+        # local file, and torch 2.6 flips the default to True (which would break
+        # this load). Also silences the FutureWarning.
+        ckpt = torch.load(self.checkpoint_path, map_location="cpu", weights_only=False)
         self.modelmodule = ModelModule(args)
         self.modelmodule.model.load_state_dict(ckpt)
         self.modelmodule.eval()

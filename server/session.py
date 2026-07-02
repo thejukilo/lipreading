@@ -35,6 +35,7 @@ class SessionConfig:
     height: int = 480
     tts: str = "piper"                 # built-in engine (CLI --tts); see `voice`
     voice: str = "piper"               # selector: "piper" | "sapi" | "clone:<slug>"
+    clone_engine: str = "voxcpm"       # cloned-voice engine: "voxcpm" | "xtts"
     output_device: str | int | None = "CABLE Input"   # the virtual mic
     monitor_device: str | int | None = None            # None -> default speakers
     monitor_on: bool = True
@@ -91,7 +92,7 @@ class LiveSession:
         from .audio_out import resolve_output_device
         from .tts import make_tts_for_voice
 
-        self.tts = make_tts_for_voice(self.cfg.voice)
+        self.tts = make_tts_for_voice(self.cfg.voice, clone_engine=self.cfg.clone_engine)
         self.out_device = resolve_output_device(self.cfg.output_device)
         self.monitor_on = self.cfg.monitor_on
 

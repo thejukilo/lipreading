@@ -15,7 +15,14 @@
 # transformers fails at import. The latest coqui-tts (0.27.x) requires
 # transformers>=4.57. If you install a different coqui-tts version, install the
 # transformers it asks for instead (check: pip show coqui-tts).
+# Default cloning engine: VoxCPM2 (more natural/expressive than XTTS).
+# Needs torch >= 2.5 and CUDA >= 12 — if your torch is older, upgrade it with the
+# matching CUDA wheel first, e.g.:
+#   pip install -U torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+voxcpm
+
+# XTTS (Coqui) — the alternative cloning engine (pick it under "Cloning engine").
+# Optional; skip if you only use VoxCPM. MUST cap transformers below 5.0: 5.x
+# removed compat shims coqui-tts 0.27.x imports, and a bare ">=4.57" grabs 5.x.
 coqui-tts>=0.27
-# MUST cap below 5.0: transformers 5.x removed the compat shims coqui-tts 0.27.x
-# imports (e.g. isin_mps_friendly), and a bare ">=4.57" installs the latest 5.x.
 transformers>=4.57,<5

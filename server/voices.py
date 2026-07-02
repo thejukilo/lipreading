@@ -60,22 +60,32 @@ class VoicesStore:
             raise FileNotFoundError(f"Voice '{slug}' has no reference audio.")
         return path
 
-    def add_from_wav(self, name: str, src_wav: str, created: float | None = None) -> str:
+    def add_from_wav(
+        self,
+        name: str,
+        src_wav: str,
+        created: float | None = None,
+        prompt_text: str | None = None,
+    ) -> str:
         """Store a voice from an existing WAV file. Returns the slug.
 
-        The source is normalized to mono WAV. ``created`` is a unix timestamp
-        (pass one in — callers have a clock; this module avoids importing one so
-        it stays deterministic to test).
+        The source is normalized to mono WAV. ``prompt_text`` is the transcript
+        of the reference clip (known when the user reads our recording passage);
+        VoxCPM uses it for higher-quality cloning. ``created`` is a unix
+        timestamp (passed in so this module needs no clock and stays testable).
         """
         slug = slugify(name)
         d = self._dir(slug)
         os.makedirs(d, exist_ok=True)
         _write_mono_wav(src_wav, self.reference_path(slug))
         meta = {"name": name.strip() or slug, "slug": slug, "created": created,
-                "source": os.path.basename(src_wav)}
+                "source": os.path.basename(src_wav), "prompt_text": prompt_text}
         with open(os.path.join(d, "meta.json"), "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2)
         return slug
+
+    def get_prompt_text(self, slug: str) -> str | None:
+        return self._read_meta(slug).get("prompt_text")
 
     def delete(self, slug: str) -> None:
         shutil.rmtree(self._dir(slug), ignore_errors=True)

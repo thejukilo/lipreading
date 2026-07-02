@@ -104,6 +104,7 @@ def _cfg_from_args(a) -> SessionConfig:
         height=a.height,
         tts=a.tts,
         voice=a.voice or a.tts,
+        clone_engine=a.clone_engine,
         output_device=a.output_device,
         monitor_device=a.monitor_device,
         monitor_on=not a.no_monitor,
@@ -126,6 +127,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--tts", default="piper", choices=["piper", "sapi"])
     p.add_argument("--voice", default=None,
                    help="Voice selector: piper | sapi | clone:<slug> (default: --tts value).")
+    p.add_argument("--clone-engine", default="voxcpm", choices=["voxcpm", "xtts"],
+                   help="Engine for cloned voices (default: voxcpm).")
     p.add_argument("--output-device", default="CABLE Input",
                    help="Playback device name substring or index (default: VB-Cable).")
     p.add_argument("--monitor-device", default=None,

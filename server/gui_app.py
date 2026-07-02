@@ -35,6 +35,8 @@ PTT_KEYS = {
     "Right Ctrl": "ctrl_r", "Left Ctrl": "ctrl_l", "Right Alt": "alt_r",
     "Space": "space", "F7": "f7", "F8": "f8", "F9": "f9", "F10": "f10",
 }
+CLONE_ENGINES = {"VoxCPM (recommended)": "voxcpm", "XTTS": "xtts"}
+
 STATE_BANNER = {
     LiveSession.IDLE: ("Ready — hold your push-to-talk key and mouth a sentence", "#2e7d32"),
     LiveSession.RECORDING: ("● Recording — mouth your sentence", "#c62828"),
@@ -94,6 +96,8 @@ class MainWindow(QtWidgets.QMainWindow):
         voice_row.addWidget(self.del_voice_btn)
         voice_row_w = QtWidgets.QWidget()
         voice_row_w.setLayout(voice_row)
+        self.clone_engine_cb = QtWidgets.QComboBox()
+        self.clone_engine_cb.addItems(list(CLONE_ENGINES.keys()))
         self.key_cb = QtWidgets.QComboBox()
         self.key_cb.addItems(list(PTT_KEYS.keys()))
         self.auto_chk = QtWidgets.QCheckBox("Speak immediately (skip review)")
@@ -104,6 +108,7 @@ class MainWindow(QtWidgets.QMainWindow):
         form.addRow("", self.monitor_chk)
         form.addRow("Monitor speakers:", self.monitor_cb)
         form.addRow("Voice:", voice_row_w)
+        form.addRow("Cloning engine:", self.clone_engine_cb)
         form.addRow("Push-to-talk key:", self.key_cb)
         form.addRow("", self.auto_chk)
         form.addRow("", self.refresh_btn)
@@ -215,7 +220,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.voice_cb.blockSignals(False)
 
     def _on_clone_voice(self) -> None:
-        dlg = CloneVoiceDialog(self.voices, self)
+        engine = CLONE_ENGINES[self.clone_engine_cb.currentText()]
+        dlg = CloneVoiceDialog(self.voices, engine=engine, parent=self)
         if dlg.exec() == QtWidgets.QDialog.Accepted and dlg.result_slug:
             self._populate_voices()
             self._select_data(self.voice_cb, f"clone:{dlg.result_slug}")
@@ -241,6 +247,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.monitor_chk.setChecked(self.cfg.monitor_on)
         self._select_data(self.monitor_cb, self.cfg.monitor_device)
         self._select_data(self.voice_cb, self.cfg.voice)
+        self._select_key(self.clone_engine_cb, CLONE_ENGINES, self.cfg.clone_engine)
         self._select_key(self.key_cb, PTT_KEYS, self.cfg.ptt_key)
         self.auto_chk.setChecked(self.cfg.auto_speak)
 
@@ -250,6 +257,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cfg.monitor_on = self.monitor_chk.isChecked()
         self.cfg.monitor_device = self.monitor_cb.currentData()
         self.cfg.voice = self.voice_cb.currentData() or "piper"
+        self.cfg.clone_engine = CLONE_ENGINES[self.clone_engine_cb.currentText()]
         self.cfg.ptt_key = PTT_KEYS[self.key_cb.currentText()]
         self.cfg.auto_speak = self.auto_chk.isChecked()
 
@@ -382,7 +390,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.start_btn.setText("Stop" if running else "Start")
         self.talk_btn.setEnabled(running)
         for w in (self.camera_cb, self.mic_cb, self.monitor_cb, self.voice_cb,
-                  self.refresh_btn, self.clone_btn, self.del_voice_btn):
+                  self.clone_engine_cb, self.refresh_btn, self.clone_btn,
+                  self.del_voice_btn):
             w.setEnabled(not running)
 
     def _status(self, msg: str) -> None:
@@ -399,14 +408,16 @@ class MainWindow(QtWidgets.QMainWindow):
 class CloneVoiceDialog(QtWidgets.QDialog):
     """Wizard: name a voice, record or upload a reference clip, preview, save."""
 
-    def __init__(self, store: VoicesStore, parent=None) -> None:
+    def __init__(self, store: VoicesStore, engine: str = "voxcpm", parent=None) -> None:
         super().__init__(parent)
         self.store = store
+        self.engine = engine
         self.setWindowTitle("Clone a voice")
         self.setMinimumWidth(460)
         self.result_slug = None
         self.result_name = ""
         self._source_wav = None      # path to the reference audio to save
+        self._source_is_recording = False  # True -> we know the transcript (passage)
         self._recorder = None
         self._rec_timer = QtCore.QTimer(self)
         self._rec_timer.timeout.connect(self._update_rec_time)
@@ -504,6 +515,7 @@ class CloneVoiceDialog(QtWidgets.QDialog):
 
                 sf.write(path, data, 22050, subtype="PCM_16")
                 self._source_wav = path
+                self._source_is_recording = True   # transcript == RECORD_PASSAGE
                 self.rec_play_btn.setEnabled(True)
                 self.rec_time.setText(f"{len(data) / 22050:.1f}s recorded")
             except Exception as e:
@@ -525,6 +537,7 @@ class CloneVoiceDialog(QtWidgets.QDialog):
         )
         if path:
             self._source_wav = path
+            self._source_is_recording = False   # unknown transcript
             self.file_lbl.setText(path)
 
     # ---- preview / save --------------------------------------------------
@@ -545,9 +558,16 @@ class CloneVoiceDialog(QtWidgets.QDialog):
     def _preview_worker(self, src: str) -> None:
         try:
             from .audio_out import play_wav
-            from .tts import XttsTTS
 
-            tts = XttsTTS(speaker_wav=src)
+            prompt_text = RECORD_PASSAGE if self._source_is_recording else None
+            if self.engine == "xtts":
+                from .tts import XttsTTS
+
+                tts = XttsTTS(speaker_wav=src)
+            else:
+                from .tts import VoxCpmTTS
+
+                tts = VoxCpmTTS(reference_wav=src, prompt_text=prompt_text)
             wav = tts.synthesize_to_wav("Hi, this is my cloned voice. How does it sound?")
             play_wav(wav, device=None, monitor=False)  # default speakers
             try:
@@ -581,8 +601,10 @@ class CloneVoiceDialog(QtWidgets.QDialog):
         if not src:
             QtWidgets.QMessageBox.information(self, "Save", "Record or choose a reference clip first.")
             return
+        prompt_text = RECORD_PASSAGE if self._source_is_recording else None
         try:
-            slug = self.store.add_from_wav(name, src, created=time.time())
+            slug = self.store.add_from_wav(name, src, created=time.time(),
+                                           prompt_text=prompt_text)
         except Exception as e:
             QtWidgets.QMessageBox.warning(self, "Save", f"Could not save voice:\n{e}")
             return
