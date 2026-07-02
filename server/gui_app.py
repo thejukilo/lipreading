@@ -17,10 +17,11 @@ import time
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from .corrector import CLAUDE_MODELS, list_ollama_models
+from .dataset import TrainingStore
 from .devices import list_audio_outputs, list_cameras
 from .hotkey import PushToTalkListener
 from .session import LiveSession
-from .corrector import CLAUDE_MODELS, list_ollama_models
 from .settings import load_config, save_config
 from .voices import VoicesStore
 
@@ -54,7 +55,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowTitle("Lipreading → Voice")
         self.cfg = load_config()
         self.voices = VoicesStore()
+        self.dataset = TrainingStore()
         self.session = LiveSession(self.cfg)
+        self._teach_recording = False
         self.ptt = PushToTalkListener(self.cfg.ptt_key, self._ptt_down, self._ptt_up)
         self._starting = False
         self._last_state = None
@@ -85,9 +88,10 @@ class MainWindow(QtWidgets.QMainWindow):
     # ---- UI construction --------------------------------------------------
 
     def _build_ui(self) -> None:
-        central = QtWidgets.QWidget()
-        self.setCentralWidget(central)
-        root = QtWidgets.QHBoxLayout(central)
+        self.tabs = QtWidgets.QTabWidget()
+        self.setCentralWidget(self.tabs)
+        speak_tab = QtWidgets.QWidget()
+        root = QtWidgets.QHBoxLayout(speak_tab)
 
         # Left: setup panel
         setup = QtWidgets.QGroupBox("Setup")
@@ -180,10 +184,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.transcript.setPlaceholderText("transcript will appear here…")
         self.speak_btn = QtWidgets.QPushButton("Speak ▶")
         self.discard_btn = QtWidgets.QPushButton("Discard")
+        self.add_train_btn = QtWidgets.QPushButton("＋ Add to training")
+        self.add_train_btn.setToolTip(
+            "Save this clip with the (corrected) text above to the Teach dataset")
         review_row = QtWidgets.QHBoxLayout()
         review_row.addWidget(self.transcript, 1)
         review_row.addWidget(self.speak_btn)
         review_row.addWidget(self.discard_btn)
+        review_row.addWidget(self.add_train_btn)
 
         self.start_btn = QtWidgets.QPushButton("Start")
         self.start_btn.setMinimumHeight(40)
@@ -205,6 +213,10 @@ class MainWindow(QtWidgets.QMainWindow):
         root.addWidget(setup)
         root.addLayout(right, 1)
 
+        self.tabs.addTab(speak_tab, "Speak")
+        self.tabs.addTab(self._build_teach_tab(), "Teach")
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+
         # Wiring
         self.refresh_btn.clicked.connect(self._refresh_devices)
         self.start_btn.clicked.connect(self._toggle_start)
@@ -212,6 +224,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.talk_btn.released.connect(self._ptt_up)
         self.speak_btn.clicked.connect(self._on_speak)
         self.discard_btn.clicked.connect(self.session.discard)
+        self.add_train_btn.clicked.connect(self._on_add_training)
         self.monitor_chk.toggled.connect(lambda v: self.session.set_monitor(v))
         self.key_cb.currentTextChanged.connect(self._on_key_changed)
         self.clone_btn.clicked.connect(self._on_clone_voice)
@@ -413,15 +426,36 @@ class MainWindow(QtWidgets.QMainWindow):
     # ---- push-to-talk + review -------------------------------------------
 
     def _ptt_down(self) -> None:
-        if self.session.is_running:
+        # Ignore push-to-talk while on the Teach tab (it uses the same buffer).
+        if self.session.is_running and self.tabs.currentIndex() == 0:
             self.session.start_recording()
 
     def _ptt_up(self) -> None:
-        if self.session.is_running:
+        if self.session.is_running and self.tabs.currentIndex() == 0:
             self.session.stop_recording()
 
     def _on_speak(self) -> None:
         self.session.speak(self.transcript.text())
+
+    def _on_add_training(self) -> None:
+        """Save the just-transcribed clip with the (corrected) text as a training
+        example — turns real mistakes into personalization data."""
+        text = self.transcript.text().strip()
+        frames = getattr(self.session, "last_frames", None)
+        if not text:
+            self._status("type the correct text first")
+            return
+        if frames is None or len(frames) == 0:
+            self._status("no clip available to add")
+            return
+        try:
+            self.dataset.add_clip(text, frames, created=time.time())
+        except Exception as e:
+            self._status(f"! {e}")
+            return
+        self._refresh_teach_list()
+        self.add_train_btn.setText("✓ Added")
+        self._status(f"added “{text}” to training")
 
     def _on_quality_changed(self, value: int) -> None:
         self.quality_lbl.setText(str(value))
@@ -482,6 +516,126 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception as e:
                 self._status(f"key change failed: {e}")
 
+    # ---- Teaching tab -----------------------------------------------------
+
+    def _build_teach_tab(self) -> QtWidgets.QWidget:
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+
+        intro = QtWidgets.QLabel(
+            "Teach the model your words. Type a word or short sentence, turn on "
+            "the camera, and record yourself saying it a few times (more reps and "
+            "more phrases = better). Fine-tuning on this data comes next."
+        )
+        intro.setWordWrap(True)
+        lay.addWidget(intro)
+
+        body = QtWidgets.QHBoxLayout()
+
+        # Left: preview + record controls
+        left = QtWidgets.QVBoxLayout()
+        self.teach_preview = QtWidgets.QLabel()
+        self.teach_preview.setFixedSize(480, 360)
+        self.teach_preview.setStyleSheet("background:#111;")
+        self.teach_preview.setAlignment(QtCore.Qt.AlignCenter)
+        self.teach_cam_btn = QtWidgets.QPushButton("Turn camera on")
+        self.teach_cam_btn.clicked.connect(self._teach_toggle_camera)
+        self.teach_phrase = QtWidgets.QLineEdit()
+        self.teach_phrase.setPlaceholderText("Word or sentence to teach, e.g.  Juan")
+        self.teach_record_btn = QtWidgets.QPushButton("● Record a rep")
+        self.teach_record_btn.setCheckable(True)
+        self.teach_record_btn.setEnabled(False)
+        self.teach_record_btn.clicked.connect(self._teach_toggle_record)
+        self.teach_status = QtWidgets.QLabel("")
+        self.teach_status.setStyleSheet("color:#555;")
+        left.addWidget(self.teach_preview)
+        left.addWidget(self.teach_cam_btn)
+        left.addWidget(QtWidgets.QLabel("Phrase:"))
+        left.addWidget(self.teach_phrase)
+        left.addWidget(self.teach_record_btn)
+        left.addWidget(self.teach_status)
+
+        # Right: collected items
+        right = QtWidgets.QVBoxLayout()
+        right.addWidget(QtWidgets.QLabel("Collected examples:"))
+        self.teach_list = QtWidgets.QListWidget()
+        self.teach_del_btn = QtWidgets.QPushButton("Delete selected phrase")
+        self.teach_del_btn.clicked.connect(self._teach_delete)
+        self.teach_total = QtWidgets.QLabel("")
+        right.addWidget(self.teach_list, 1)
+        right.addWidget(self.teach_del_btn)
+        right.addWidget(self.teach_total)
+
+        body.addLayout(left)
+        body.addLayout(right, 1)
+        lay.addLayout(body)
+        self._refresh_teach_list()
+        return w
+
+    def _on_tab_changed(self, index: int) -> None:
+        # Keep camera state reflected on the Teach button when you switch tabs.
+        on = self.session.is_running
+        self.teach_cam_btn.setText("Turn camera off" if on else "Turn camera on")
+        self.teach_record_btn.setEnabled(on)
+
+    def _teach_toggle_camera(self) -> None:
+        if self.session.is_running:
+            if self._teach_recording:
+                self._teach_toggle_record()  # stop an in-progress rep first
+            self.session.stop()
+            self.teach_cam_btn.setText("Turn camera on")
+            self.teach_record_btn.setEnabled(False)
+            return
+        try:
+            self.session.start()  # camera only — no model load needed to record
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "Camera", str(e))
+            return
+        self.teach_cam_btn.setText("Turn camera off")
+        self.teach_record_btn.setEnabled(True)
+
+    def _teach_toggle_record(self) -> None:
+        if not self._teach_recording:
+            if not self.teach_phrase.text().strip():
+                self.teach_record_btn.setChecked(False)
+                self.teach_status.setText("type a phrase first")
+                return
+            self._teach_recording = True
+            self.session.clip_record_start()
+            self.teach_record_btn.setText("■ Stop & save")
+            self.teach_record_btn.setChecked(True)
+        else:
+            self._teach_recording = False
+            frames = self.session.clip_record_stop()
+            self.teach_record_btn.setText("● Record a rep")
+            self.teach_record_btn.setChecked(False)
+            phrase = self.teach_phrase.text().strip()
+            try:
+                self.dataset.add_clip(phrase, frames, created=time.time())
+            except Exception as e:
+                self.teach_status.setText(f"! {e}")
+                return
+            self.teach_status.setText(f"saved a rep of “{phrase}”")
+            self._refresh_teach_list()
+
+    def _refresh_teach_list(self) -> None:
+        self.teach_list.clear()
+        for g in self.dataset.items_grouped():
+            self.teach_list.addItem(f"{g['phrase']}  —  {g['count']} rep(s)")
+        n_clips, n_phrases = self.dataset.stats()
+        self.teach_total.setText(f"{n_clips} clip(s) across {n_phrases} phrase(s)")
+
+    def _teach_delete(self) -> None:
+        item = self.teach_list.currentItem()
+        if item is None:
+            return
+        phrase = item.text().split("  —  ")[0]
+        if QtWidgets.QMessageBox.question(
+            self, "Delete", f"Delete all recordings of “{phrase}”?"
+        ) == QtWidgets.QMessageBox.Yes:
+            self.dataset.delete_phrase(phrase)
+            self._refresh_teach_list()
+
     # ---- periodic UI update ----------------------------------------------
 
     def _tick(self) -> None:
@@ -509,11 +663,15 @@ class MainWindow(QtWidgets.QMainWindow):
             self._status(f"! {err}")
             self._set_running_ui(False)
             QtWidgets.QMessageBox.warning(self, "Could not start", err)
-        elif self.session.is_running and self.start_btn.text() != "Stop":
+        elif self.session.is_running and self.session.is_loaded and self.start_btn.text() != "Stop":
+            # Only flip the Speak UI to "running" when the model is loaded — the
+            # Teaching tab can turn on the camera without loading the model.
             self._set_running_ui(True)
 
         self._update_preview()
         self._update_state()
+        if self._teach_recording:
+            self.teach_status.setText(f"● recording… {self.session.frame_count} frames")
 
     def _update_preview(self) -> None:
         import cv2  # local: heavy import, only once running
@@ -524,10 +682,11 @@ class MainWindow(QtWidgets.QMainWindow):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         h, w = rgb.shape[:2]
         img = QtGui.QImage(rgb.data, w, h, 3 * w, QtGui.QImage.Format_RGB888)
-        pix = QtGui.QPixmap.fromImage(img).scaled(
-            self.preview.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation
-        )
-        self.preview.setPixmap(pix)
+        pixmap = QtGui.QPixmap.fromImage(img)
+        self.preview.setPixmap(pixmap.scaled(
+            self.preview.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
+        self.teach_preview.setPixmap(pixmap.scaled(
+            self.teach_preview.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
 
     def _update_state(self) -> None:
         st = self.session.state
@@ -542,10 +701,12 @@ class MainWindow(QtWidgets.QMainWindow):
         if st != self._last_state:
             if st == LiveSession.REVIEW:
                 self.transcript.setText(self.session.pending_text)
+                self.add_train_btn.setText("＋ Add to training")  # reset label
             self._last_state = st
         review = st == LiveSession.REVIEW
         self.speak_btn.setEnabled(review or bool(self.transcript.text()))
         self.discard_btn.setEnabled(review)
+        self.add_train_btn.setEnabled(review and getattr(self.session, "last_frames", None) is not None)
 
     def _set_running_ui(self, running: bool) -> None:
         self.start_btn.setEnabled(True)

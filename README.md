@@ -87,3 +87,8 @@ Claude. Optional install for the Claude backend:
 pip install -r requirements-llm.txt
 ```
 → [`docs/text-cleanup.md`](docs/text-cleanup.md)
+
+**Teach / personalize (in progress)** — collect clips of yourself saying your own
+words (names, jargon) to later fine-tune a **Personalized** model. In the app:
+the **Teach** tab, or **＋ Add to training** when you fix a wrong transcript.
+→ [`docs/teaching.md`](docs/teaching.md)

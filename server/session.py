@@ -62,6 +62,7 @@ class LiveSession:
 
         self.utterance = []
         self.latest_bgr = None
+        self.last_frames = None      # frames of the last transcribed utterance
         self.pending_text = ""
         self.last_status = ""
 
@@ -230,6 +231,22 @@ class LiveSession:
         self.recording = True
         self._set_state(self.RECORDING)
 
+    # ---- clip capture for the Teaching tab (no transcription) -------------
+
+    def clip_record_start(self) -> None:
+        """Begin buffering frames for a training clip (bypasses the VSR path)."""
+        with self._buf_lock:
+            self.utterance = []
+        self.recording = True
+
+    def clip_record_stop(self):
+        """Stop and return the buffered RGB frames (T,H,W,3)."""
+        self.recording = False
+        with self._buf_lock:
+            frames = self.utterance
+            self.utterance = []
+        return frames
+
     def stop_recording(self) -> None:
         self.recording = False
         if self.state != self.RECORDING:
@@ -247,6 +264,7 @@ class LiveSession:
 
         try:
             arr = np.asarray(frames, dtype=np.uint8)
+            self.last_frames = arr   # keep for "add to training"
             t0 = time.perf_counter()
             text = self.engine.transcribe_frames(arr)
             dt = time.perf_counter() - t0
