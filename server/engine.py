@@ -21,6 +21,30 @@ import time
 from pathlib import Path
 
 
+def normalize_transcript(text: str) -> str:
+    """Turn the model's ALL-CAPS output into natural sentence case.
+
+    auto_avsr (LRS3) emits uppercase text; TTS engines then spell short words
+    like "IT" letter by letter ("I-T"). Lowercasing fixes the pronunciation;
+    we then re-capitalize sentence starts and the standalone pronoun "I" for
+    readability in the review box.
+    """
+    import re
+
+    text = (text or "").strip()
+    if not text:
+        return text
+    letters = [c for c in text if c.isalpha()]
+    if not (letters and all(c.isupper() for c in letters)):
+        return text  # not all-caps — leave as-is
+
+    text = text.lower()
+    text = re.sub(r"(^|[.!?]\s+)([a-z])", lambda m: m.group(1) + m.group(2).upper(), text)
+    text = re.sub(r"\bi\b", "I", text)      # standalone pronoun
+    text = re.sub(r"\bi'", "I'", text)      # I'm, I'll, I've, ...
+    return text
+
+
 def _ensure_auto_avsr_on_path(auto_avsr_dir: str) -> None:
     """Put the auto_avsr checkout at the front of sys.path.
 
@@ -174,7 +198,7 @@ class LipreadingEngine:
 
         with torch.no_grad():
             transcript = self.modelmodule(video)
-        return transcript
+        return normalize_transcript(transcript)
 
 
 def _cli() -> int:
