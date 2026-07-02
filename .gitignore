@@ -1,0 +1,21 @@
+# Vendored auto_avsr checkout (cloned by scripts/setup_windows.ps1)
+/third_party/
+
+# Model checkpoints and media
+/checkpoints/
+*.pth
+*.mp4
+*.wav
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

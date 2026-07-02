@@ -41,3 +41,18 @@ everything around it:
 
 See [`docs/phase1-design.md`](docs/phase1-design.md) for the architecture and the
 vertical-slice build plan.
+
+## Getting started (Phase 1, step 1)
+
+The first slice is a **model smoke test**: transcribe a recorded clip on your
+Windows + CUDA box to prove the auto_avsr pipeline works before building on it.
+
+```powershell
+py -3.10 -m venv .venv; .\.venv\Scripts\Activate.ps1
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install -r requirements.txt
+powershell -ExecutionPolicy Bypass -File scripts\setup_windows.ps1
+python -m server.engine --video media\demo.mp4 --checkpoint checkpoints\vsr_trlrs3_base.pth
+```
+
+Full walkthrough and troubleshooting: [`docs/step1-smoke-test.md`](docs/step1-smoke-test.md).

@@ -1,0 +1,22 @@
+# Phase 1 inference-server dependencies.
+#
+# IMPORTANT (Windows + CUDA): install torch/torchvision/torchaudio from the
+# CUDA wheel index FIRST, otherwise pip pulls the CPU-only build:
+#
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+#
+# Then: pip install -r requirements.txt
+#
+# auto_avsr itself is NOT installed via pip — it is cloned into
+# third_party/auto_avsr and put on sys.path by server/engine.py. Its vendored
+# espnet decoder and sentencepiece tokenizer live inside that checkout.
+
+torch
+torchvision
+torchaudio
+pytorch-lightning
+sentencepiece
+av
+mediapipe
+opencv-python
+numpy

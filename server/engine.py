@@ -1,0 +1,201 @@
+"""Lipreading inference engine — a thin wrapper around auto_avsr.
+
+We reuse auto_avsr's ``ModelModule`` (Conformer VSR), its sentencepiece
+tokenizer, its vendored ESPnet decoder, and its mouth-cropping detectors.
+auto_avsr is not a pip package: the whole repo must be importable, because
+``datamodule.transforms`` resolves the tokenizer relative to the repo root
+(``spm/unigram/unigram5000.model``) and ``lightning.ModelModule`` imports the
+vendored ``espnet`` package. So we clone auto_avsr and put it on ``sys.path``.
+
+The auto_avsr ``InferencePipeline`` only exists inside a demo notebook, so we
+reimplement it here — faithful to the notebook, but with real device placement
+(the notebook leaves the model on CPU).
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+import time
+from pathlib import Path
+
+
+def _ensure_auto_avsr_on_path(auto_avsr_dir: str) -> None:
+    """Put the auto_avsr checkout at the front of sys.path.
+
+    Front, not append: auto_avsr ships a root ``lightning.py`` that we want to
+    resolve before the pip ``lightning`` package (they collide by name).
+    """
+    d = os.path.abspath(auto_avsr_dir)
+    if not os.path.isdir(d):
+        raise FileNotFoundError(
+            f"auto_avsr checkout not found at '{d}'.\n"
+            "Clone it first (see scripts/setup_windows.ps1) or pass "
+            "auto_avsr_dir=... / set AUTO_AVSR_DIR."
+        )
+    if not os.path.isfile(os.path.join(d, "lightning.py")):
+        raise FileNotFoundError(
+            f"'{d}' does not look like an auto_avsr checkout (no lightning.py)."
+        )
+    if d in sys.path:
+        sys.path.remove(d)
+    sys.path.insert(0, d)
+
+
+class LipreadingEngine:
+    """Video file -> transcript, using an auto_avsr VSR checkpoint.
+
+    Parameters
+    ----------
+    checkpoint_path:
+        Path to a ``.pth`` VSR checkpoint from the auto_avsr model zoo
+        (e.g. ``vsr_trlrs3_base.pth``).
+    auto_avsr_dir:
+        Path to the auto_avsr repo checkout. Falls back to ``$AUTO_AVSR_DIR``.
+    detector:
+        ``"mediapipe"`` (default; pip-installable, easiest on Windows) or
+        ``"retinaface"`` (needs the ibug packages, GPU-oriented).
+    device:
+        ``"cuda:0"`` or ``"cpu"``.
+    """
+
+    def __init__(
+        self,
+        checkpoint_path: str,
+        auto_avsr_dir: str | None = None,
+        detector: str = "mediapipe",
+        device: str = "cuda:0",
+    ) -> None:
+        auto_avsr_dir = auto_avsr_dir or os.environ.get("AUTO_AVSR_DIR", "third_party/auto_avsr")
+        _ensure_auto_avsr_on_path(auto_avsr_dir)
+        self.auto_avsr_dir = os.path.abspath(auto_avsr_dir)
+
+        checkpoint_path = os.path.abspath(checkpoint_path)
+        if not os.path.isfile(checkpoint_path):
+            raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+        self.checkpoint_path = checkpoint_path
+        self.detector = detector
+        self.device = device
+
+        # Imports are deferred until after sys.path is patched.
+        import torch  # noqa: F401  (kept local so import errors are actionable)
+
+        self._torch = torch
+        self._build(detector, device)
+
+    def _build(self, detector: str, device: str) -> None:
+        import torch
+        from datamodule.transforms import VideoTransform
+        from lightning import ModelModule
+
+        # The demo notebook works with only `modality` set; ModelModule reads
+        # every other field via getattr(..., default), so a bare Namespace is
+        # enough for inference against the base checkpoint.
+        args = argparse.Namespace(modality="video")
+
+        if detector == "mediapipe":
+            from preparation.detectors.mediapipe.detector import LandmarksDetector
+            from preparation.detectors.mediapipe.video_process import VideoProcess
+
+            self.landmarks_detector = LandmarksDetector()
+            self.video_process = VideoProcess(convert_gray=False)
+        elif detector == "retinaface":
+            from preparation.detectors.retinaface.detector import LandmarksDetector
+            from preparation.detectors.retinaface.video_process import VideoProcess
+
+            self.landmarks_detector = LandmarksDetector(device=device)
+            self.video_process = VideoProcess(convert_gray=False)
+        else:
+            raise ValueError(f"Unknown detector: {detector!r} (use 'mediapipe' or 'retinaface')")
+
+        self.video_transform = VideoTransform(subset="test")
+
+        ckpt = torch.load(self.checkpoint_path, map_location="cpu")
+        self.modelmodule = ModelModule(args)
+        self.modelmodule.model.load_state_dict(ckpt)
+        self.modelmodule.eval()
+        self.modelmodule.to(device)
+
+    def _load_video(self, path: str):
+        import torchvision
+
+        # Returns THWC uint8 numpy (frames, height, width, channels).
+        return torchvision.io.read_video(path, pts_unit="sec")[0].numpy()
+
+    def transcribe(self, video_path: str) -> str:
+        """Run mouth-crop + VSR on a video file and return decoded text."""
+        import torch
+
+        video_path = os.path.abspath(video_path)
+        if not os.path.isfile(video_path):
+            raise FileNotFoundError(f"Video not found: {video_path}")
+
+        video = self._load_video(video_path)
+        landmarks = self.landmarks_detector(video)
+        if landmarks is None:
+            raise RuntimeError(
+                "No face/landmarks detected in the video — check framing, "
+                "lighting, and that a mouth is visible."
+            )
+        video = self.video_process(video, landmarks)  # cropped mouth ROI
+        video = torch.tensor(video).permute(0, 3, 1, 2)  # T,C,H,W
+        video = self.video_transform(video).to(self.device)
+
+        with torch.no_grad():
+            transcript = self.modelmodule(video)
+        return transcript
+
+
+def _cli() -> int:
+    parser = argparse.ArgumentParser(
+        description="Step 1 smoke test: transcribe a video clip with auto_avsr VSR."
+    )
+    parser.add_argument("--video", required=True, help="Path to the input video file.")
+    parser.add_argument(
+        "--checkpoint",
+        default=os.environ.get("VSR_CHECKPOINT", "checkpoints/vsr_trlrs3_base.pth"),
+        help="Path to the VSR .pth checkpoint.",
+    )
+    parser.add_argument(
+        "--auto-avsr-dir",
+        default=None,
+        help="Path to the auto_avsr checkout (default: $AUTO_AVSR_DIR or third_party/auto_avsr).",
+    )
+    parser.add_argument("--detector", default="mediapipe", choices=["mediapipe", "retinaface"])
+    parser.add_argument("--device", default=None, help="cuda:0 or cpu (default: auto).")
+    args = parser.parse_args()
+
+    device = args.device
+    if device is None:
+        import torch
+
+        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+    print(f"[smoke] device={device} detector={args.detector}")
+    print(f"[smoke] checkpoint={args.checkpoint}")
+    print(f"[smoke] video={args.video}")
+
+    t0 = time.perf_counter()
+    engine = LipreadingEngine(
+        checkpoint_path=args.checkpoint,
+        auto_avsr_dir=args.auto_avsr_dir,
+        detector=args.detector,
+        device=device,
+    )
+    t_load = time.perf_counter() - t0
+    print(f"[smoke] model loaded in {t_load:.1f}s")
+
+    t1 = time.perf_counter()
+    transcript = engine.transcribe(args.video)
+    t_infer = time.perf_counter() - t1
+
+    print("\n===== TRANSCRIPT =====")
+    print(transcript)
+    print("======================")
+    print(f"[smoke] inference {t_infer:.1f}s")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_cli())
