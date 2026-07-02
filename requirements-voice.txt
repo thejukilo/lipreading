@@ -11,6 +11,7 @@
 # on the same command, e.g.:
 #   pip install -r requirements-voice.txt torch==<your-version>
 coqui-tts
-# coqui-tts imports transformers.pytorch_utils.isin_mps_friendly, which only
-# exists in transformers >= 4.46.3. Older transformers -> ImportError at load.
-transformers>=4.46.3,<4.50
+# coqui-tts needs transformers symbols isin_mps_friendly (>=4.46.3) AND
+# is_torch_greater_or_equal (>=4.47.1); and 4.50+ breaks it via the
+# GenerationMixin change. So the working window is 4.47.1–4.49.x (4.49.0 tested).
+transformers>=4.47.1,<4.50
