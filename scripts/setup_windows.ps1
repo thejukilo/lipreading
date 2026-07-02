@@ -22,8 +22,9 @@ $thirdParty = Join-Path $root "third_party"
 $autoAvsr   = Join-Path $thirdParty "auto_avsr"
 $ckptDir    = Join-Path $root "checkpoints"
 $mediaDir   = Join-Path $root "media"
+$modelDir   = Join-Path $root "models"
 
-New-Item -ItemType Directory -Force -Path $thirdParty, $ckptDir, $mediaDir | Out-Null
+New-Item -ItemType Directory -Force -Path $thirdParty, $ckptDir, $mediaDir, $modelDir | Out-Null
 
 if (Test-Path (Join-Path $autoAvsr "lightning.py")) {
     Write-Host "[setup] auto_avsr already present at $autoAvsr"
@@ -38,6 +39,14 @@ if (Test-Path $ckpt) {
 } else {
     Write-Host "[setup] downloading VSR checkpoint (vsr_trlrs3_base.pth)..."
     Invoke-WebRequest -Uri "http://www.doc.ic.ac.uk/~pm4115/autoAVSR/vsr_trlrs3_base.pth" -OutFile $ckpt
+}
+
+$blaze = Join-Path $modelDir "blaze_face_short_range.tflite"
+if (Test-Path $blaze) {
+    Write-Host "[setup] BlazeFace model already present at $blaze"
+} else {
+    Write-Host "[setup] downloading BlazeFace face-detector model..."
+    Invoke-WebRequest -Uri "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite" -OutFile $blaze
 }
 
 $demo = Join-Path $mediaDir "demo.mp4"

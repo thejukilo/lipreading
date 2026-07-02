@@ -1,9 +1,11 @@
 # Vendored auto_avsr checkout (cloned by scripts/setup_windows.ps1)
 /third_party/
 
-# Model checkpoints and media
+# Model checkpoints, detector models, and media
 /checkpoints/
+/models/
 *.pth
+*.tflite
 *.mp4
 *.wav
 

@@ -95,10 +95,16 @@ class LipreadingEngine:
         args = argparse.Namespace(modality="video")
 
         if detector == "mediapipe":
-            from preparation.detectors.mediapipe.detector import LandmarksDetector
+            # auto_avsr's own mediapipe detector uses the legacy
+            # `mp.solutions` API, which Google removed in mediapipe >= ~0.10.18.
+            # We substitute a Tasks-API detector with an identical output
+            # format and keep auto_avsr's VideoProcess (it needs its bundled
+            # 20words_mean_face.npy, resolved relative to that module).
             from preparation.detectors.mediapipe.video_process import VideoProcess
 
-            self.landmarks_detector = LandmarksDetector()
+            from .detectors import MediapipeTasksLandmarksDetector
+
+            self.landmarks_detector = MediapipeTasksLandmarksDetector()
             self.video_process = VideoProcess(convert_gray=False)
         elif detector == "retinaface":
             from preparation.detectors.retinaface.detector import LandmarksDetector

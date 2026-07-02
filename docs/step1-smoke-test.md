@@ -33,10 +33,19 @@ powershell -ExecutionPolicy Bypass -File scripts\setup_windows.ps1
 This lays down:
 
 ```
-third_party/auto_avsr/          # the model code, tokenizer, vendored espnet
-checkpoints/vsr_trlrs3_base.pth # English VSR base checkpoint (LRS3)
-media/demo.mp4                  # auto_avsr's demo clip
+third_party/auto_avsr/                    # model code, tokenizer, vendored espnet
+checkpoints/vsr_trlrs3_base.pth           # English VSR base checkpoint (LRS3)
+models/blaze_face_short_range.tflite      # mediapipe Tasks face detector
+media/demo.mp4                            # auto_avsr's demo clip
 ```
+
+> **Note on the face detector.** auto_avsr's bundled mediapipe detector uses the
+> old `mp.solutions` API, which Google **removed** in mediapipe ≥ ~0.10.18 (on
+> current mediapipe you'd hit `module 'mediapipe' has no attribute 'solutions'`).
+> We replace it with a Tasks-API detector (`server/detectors.py`) that produces
+> the identical landmark format, so any modern mediapipe works — no downgrade,
+> no pinned Python needed. It uses the BlazeFace model downloaded above (override
+> its path with `BLAZE_FACE_MODEL`).
 
 ## Run it
 
@@ -65,8 +74,11 @@ English (it won't be perfect — that's fine for step 1).
   `requirements.txt`, or pip will keep the CPU wheel.
 - **`auto_avsr checkout not found`** — run `scripts\setup_windows.ps1`, or set
   `AUTO_AVSR_DIR` to your checkout.
-- **mediapipe import/version errors** — mediapipe is picky about Python
-  version; 3.10 is the safe choice.
+- **`module 'mediapipe' has no attribute 'solutions'`** — expected on modern
+  mediapipe; our Tasks-API detector avoids it. If you still see it, you're on an
+  old checkout that imports auto_avsr's detector — pull latest.
+- **`BlazeFace model not found`** — run the setup script, or set
+  `BLAZE_FACE_MODEL` to the `.tflite` path.
 
 ## Next (step 2)
 

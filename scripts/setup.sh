@@ -9,7 +9,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-mkdir -p "$root/third_party" "$root/checkpoints" "$root/media"
+mkdir -p "$root/third_party" "$root/checkpoints" "$root/media" "$root/models"
 
 auto_avsr="$root/third_party/auto_avsr"
 if [ -f "$auto_avsr/lightning.py" ]; then
@@ -25,6 +25,14 @@ if [ -f "$ckpt" ]; then
 else
   echo "[setup] downloading VSR checkpoint..."
   curl -L "http://www.doc.ic.ac.uk/~pm4115/autoAVSR/vsr_trlrs3_base.pth" -o "$ckpt"
+fi
+
+blaze="$root/models/blaze_face_short_range.tflite"
+if [ -f "$blaze" ]; then
+  echo "[setup] BlazeFace model already present"
+else
+  echo "[setup] downloading BlazeFace face-detector model..."
+  curl -L "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite" -o "$blaze"
 fi
 
 demo="$root/media/demo.mp4"

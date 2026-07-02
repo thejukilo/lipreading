@@ -11,6 +11,9 @@
 # third_party/auto_avsr and put on sys.path by server/engine.py. Its vendored
 # espnet decoder and sentencepiece tokenizer live inside that checkout.
 
+# mediapipe: any modern version works. We use its Tasks FaceDetector API
+# (server/detectors.py) because the legacy mp.solutions API auto_avsr relied on
+# was removed in mediapipe >= ~0.10.18.
 torch
 torchvision
 torchaudio
@@ -19,4 +22,5 @@ sentencepiece
 av
 mediapipe
 opencv-python
+scikit-image
 numpy
