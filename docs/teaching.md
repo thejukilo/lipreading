@@ -65,12 +65,40 @@ When you've collected a decent set (at least a few clips; more is better):
 3. It saves `checkpoints/personalized.pth`. On the **Speak** tab, set
    **Recognition model → Personalized (yours)**, then **Start**.
 
-What it does under the hood: reprocesses your clips through the same mouth-crop
-pipeline as inference, then lightly adapts the base checkpoint (low learning
-rate, few epochs, gradient clipping) so it nudges toward your face/vocabulary
-without forgetting general English. The base model is untouched — switch back to
-**Base** anytime, or delete `personalized.pth` to discard a bad run and retrain.
+What it does under the hood, and how it avoids "it only says the words I taught
+it": a naive fine-tune on a few clips makes the decoder **memorize** those exact
+sentences and emit them no matter what the camera shows (catastrophic
+forgetting). We prevent that on three fronts, all on by default:
+
+1. **The visual backbone is frozen.** The 3D-conv/ResNet frontend and the whole
+   Conformer encoder — the general viseme reader — are never touched. Only the
+   decoder + CTC head (the *viseme → your words* mapping) is trained, so general
+   lip-reading can't be damaged.
+2. **An L2-SP anchor** pulls every trained weight back toward its base value, so
+   the decoder stays close to the original instead of collapsing onto your few
+   phrases.
+3. **A gentle schedule with early stop** — low learning rate, few epochs, and an
+   automatic stop the moment the loss floors out (the tell-tale of memorizing
+   rather than adapting).
+
+The base model is untouched — switch back to **Base** anytime, or delete
+`personalized.pth` to discard a bad run and retrain.
 
 > Fine-tuning always starts from the **base** model (not a previous personalized
-> one), so re-training with more data doesn't compound drift. Tune amount/epochs
-> by collecting more data rather than training repeatedly.
+> one), so re-training with more data doesn't compound drift.
+
+### If a personalized run still over-focuses
+
+If it leans too hard on the taught phrases, the fix is almost always **more and
+more varied data**, not more training:
+
+- Record **whole sentences you'd actually say**, not isolated names. A name on
+  its own (just "Juan") gives the decoder nothing to anchor to except that one
+  word; the same name inside `Juan is overloaded this week` teaches it in
+  context.
+- Aim for **many phrases** (10+), each with a few reps, over time.
+- For **names/jargon specifically**, the most reliable path is still the
+  **Text cleanup** LLM on the Speak tab plus its **context** field (list your
+  teammates' names there) — that fixes names without any retraining. Think of
+  fine-tuning as adapting to *your face and speaking style*, and the LLM +
+  context as the fast, safe way to nail *specific names*.
