@@ -75,6 +75,7 @@ class LiveApp:
         self.pending_text = ""       # transcript awaiting review
         self.status_msg = ""
         self.running = True
+        self.monitor_on = not args.no_monitor   # toggled with 'm' at runtime
         self.target_key = _resolve_key(args.key)
 
         # Lazily-built heavy bits (loaded in setup()).
@@ -213,7 +214,7 @@ class LiveApp:
             play_wav(
                 wav,
                 device=self.out_device,
-                monitor=not self.args.no_monitor,
+                monitor=self.monitor_on,
                 monitor_device=self.args.monitor_device,
                 blocking=True,
             )
@@ -275,6 +276,11 @@ class LiveApp:
             cv2.putText(frame, f"{n} frames", (w - 110, 21),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
 
+        mon_txt = "monitor ON (m)" if self.monitor_on else "monitor OFF (m)"
+        mon_col = (60, 200, 60) if self.monitor_on else (120, 120, 120)
+        cv2.putText(frame, mon_txt, (w - 160, h - 12),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, mon_col, 1)
+
         if self.state == self.REVIEW and self.pending_text:
             self._draw_wrapped(frame, self.pending_text, y0=h - 70)
         if self.status_msg:
@@ -322,7 +328,10 @@ class LiveApp:
                 key = cv2.waitKey(15) & 0xFF
                 if key in (ord("q"), ord("Q")):
                     break
-                if self.state == self.REVIEW and key != 255:
+                if key in (ord("m"), ord("M")):   # toggle local monitor anytime
+                    self.monitor_on = not self.monitor_on
+                    self.status_msg = f"monitor {'ON' if self.monitor_on else 'OFF'}"
+                elif self.state == self.REVIEW and key != 255:
                     self._handle_review_key(key)
         finally:
             self.running = False

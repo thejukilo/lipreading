@@ -45,6 +45,8 @@ the push-to-talk key.
   `--key`, e.g. `--key f8` or `--key space`.)
 - **Review mode (default):** focus the preview window, then
   **Enter** = speak into Meet · **Esc** = discard · **e** = edit text in the terminal.
+- **m** in the window toggles the local monitor on/off at runtime (handy when a
+  second device is already in the meeting playing the audio back — see below).
 - **Q** in the window quits.
 
 The push-to-talk key is **global** — it works while you're focused on the Meet
@@ -68,6 +70,9 @@ Two things to know:
    your **speakers/headphones** so you hear exactly what was sent to Meet. Turn it
    off with `--no-monitor`; choose a specific output with
    `--monitor-device "Headphones"` (or an index from `--list-audio-devices`).
+   Press **m** in the window to toggle it live — e.g. turn it **off** when a
+   second device already in the meeting is playing the audio back to you, so you
+   don't hear it twice.
 
 So: the mic level moving in Meet = it's working. The monitor lets you hear it;
 a second participant confirms others hear it too.
