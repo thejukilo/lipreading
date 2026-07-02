@@ -19,6 +19,8 @@ import argparse
 import os
 import time
 
+os.environ.setdefault("OPENCV_LOG_LEVEL", "SILENT")  # quiet VideoIO probe spam
+
 from .hotkey import PushToTalkListener
 from .session import LiveSession, SessionConfig
 

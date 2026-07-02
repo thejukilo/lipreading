@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import sys
+
+# Quiet OpenCV's native VideoIO log spam (the 'obsensor index out of range' /
+# 'can't capture by index' lines while probing). Must be set before cv2 loads.
+os.environ.setdefault("OPENCV_LOG_LEVEL", "SILENT")
 
 from .audio_out import list_output_devices
 
@@ -74,8 +79,10 @@ def list_cameras(max_index: int = 6) -> list[tuple[int, str]]:
             names = _windows_camera_names()
             if names:
                 return [(i, name) for i, name in enumerate(names)]
-        except Exception:
-            pass  # pygrabber missing/failed -> probe below
+        except Exception as e:
+            # Make the reason visible instead of silently showing "Camera 0".
+            print(f"[devices] real camera names unavailable ({type(e).__name__}: {e}). "
+                  "Install pygrabber for names:  pip install pygrabber")
 
     found = []
     for idx in range(max_index):
