@@ -14,16 +14,41 @@ import os
 import urllib.request
 
 SYSTEM_PROMPT = (
-    "You clean up transcripts from a silent-speech (lipreading) system. The "
-    "recognizer confuses words that look similar on the lips, so the text often "
-    "contains a wrong but similar-looking word (e.g. 'god'->'dog', "
-    "'beating'->'meeting'). Rewrite the transcript so it reads as natural, "
-    "correct English, fixing likely misrecognitions from context. Rules: keep "
-    "the speaker's original meaning, wording, and length as close as possible; "
-    "only change words that are likely errors; do NOT add information, answer "
-    "questions, or add commentary or quotation marks. Output ONLY the corrected "
-    "sentence, nothing else."
+    "You are a word-level corrector for a lipreading system — NOT an editor. The "
+    "recognizer sometimes outputs a wrong word that looks similar on the lips "
+    "(e.g. 'god'->'dog', 'beating'->'meeting'). Your ONLY job is to fix those "
+    "specific mistakes.\n"
+    "Rules:\n"
+    "- Change a word ONLY when it is almost certainly a lipreading error that "
+    "makes the sentence wrong or nonsensical. Otherwise copy every word EXACTLY.\n"
+    "- Do NOT paraphrase or 'improve' the wording. Do NOT replace correct words "
+    "with synonyms (keep 'supermarket' as 'supermarket', 'car' as 'car').\n"
+    "- Do NOT change grammar, tense, sentence structure, punctuation, or style, "
+    "and do NOT add or remove words beyond fixing a misrecognition.\n"
+    "- Keep the original capitalization.\n"
+    "Output ONLY the resulting sentence, nothing else. If nothing needs fixing, "
+    "return the sentence unchanged."
 )
+
+# Few-shot anchors: two fixes and one deliberate no-change (teaches it not to
+# paraphrase correct words like supermarket/car).
+_FEW_SHOT = [
+    ("I love to walk with my god in the park",
+     "I love to walk with my dog in the park"),
+    ("Hi welcome, in this beating we will present the numbers.",
+     "Hi welcome, in this meeting we will present the numbers."),
+    ("I will go to the supermarket and drive with my car.",
+     "I will go to the supermarket and drive with my car."),
+]
+
+
+def _build_messages(text: str) -> list[dict]:
+    msgs = []
+    for user, assistant in _FEW_SHOT:
+        msgs.append({"role": "user", "content": user})
+        msgs.append({"role": "assistant", "content": assistant})
+    msgs.append({"role": "user", "content": text})
+    return msgs
 
 
 class Corrector:
@@ -51,11 +76,8 @@ class OllamaCorrector(Corrector):
         payload = {
             "model": self.model,
             "stream": False,
-            "options": {"temperature": 0.2},
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": text},
-            ],
+            "options": {"temperature": 0},  # deterministic, minimal edits
+            "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + _build_messages(text),
         }
         req = urllib.request.Request(
             f"{self.host}/api/chat",
@@ -104,10 +126,25 @@ class AnthropicCorrector(Corrector):
             model=self.model,
             max_tokens=256,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": text}],
+            messages=_build_messages(text),
         )
         out = "".join(b.text for b in msg.content if b.type == "text").strip()
         return out or text
+
+
+def list_ollama_models(host: str = "http://localhost:11434") -> list[str]:
+    """Names of models installed in Ollama (via /api/tags). [] if unreachable."""
+    try:
+        req = urllib.request.Request(host.rstrip("/") + "/api/tags")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return [m["name"] for m in data.get("models", []) if m.get("name")]
+    except Exception:
+        return []
+
+
+# Curated Claude models for the cleanup dropdown (fastest/cheapest first).
+CLAUDE_MODELS = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-4-8"]
 
 
 def make_corrector(

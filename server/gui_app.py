@@ -20,6 +20,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from .devices import list_audio_outputs, list_cameras
 from .hotkey import PushToTalkListener
 from .session import LiveSession
+from .corrector import CLAUDE_MODELS, list_ollama_models
 from .settings import load_config, save_config
 from .voices import VoicesStore
 
@@ -60,12 +61,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._pending_cameras = None   # set by the background camera scan
         self._scanning_cameras = False
+        self._pending_cleanup_models = None   # set by the background Ollama probe
 
         self._build_ui()
         self._populate_audio()
         self._populate_cameras_default()   # fast; real scan runs in background
         self._populate_voices()
         self._apply_cfg_to_widgets()
+        self._populate_cleanup_models(self.cfg.corrector)
         self._set_running_ui(False)
         self._start_camera_scan()
 
@@ -130,8 +133,9 @@ class MainWindow(QtWidgets.QMainWindow):
         # LLM transcript cleanup
         self.cleanup_cb = QtWidgets.QComboBox()
         self.cleanup_cb.addItems(list(CLEANUP_BACKENDS.keys()))
-        self.cleanup_model_edit = QtWidgets.QLineEdit()
-        self.cleanup_model_edit.setPlaceholderText("default model")
+        self.cleanup_model_cb = QtWidgets.QComboBox()
+        self.cleanup_model_cb.setEditable(True)  # pick installed, or type your own
+        self.cleanup_model_cb.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
         self.cleanup_key_edit = QtWidgets.QLineEdit()
         self.cleanup_key_edit.setPlaceholderText("Claude API key (stored locally)")
         self.cleanup_key_edit.setEchoMode(QtWidgets.QLineEdit.Password)
@@ -147,7 +151,7 @@ class MainWindow(QtWidgets.QMainWindow):
         form.addRow("Voice quality:", quality_row_w)
         form.addRow("Push-to-talk key:", self.key_cb)
         form.addRow("Text cleanup:", self.cleanup_cb)
-        form.addRow("Cleanup model:", self.cleanup_model_edit)
+        form.addRow("Cleanup model:", self.cleanup_model_cb)
         form.addRow("Claude API key:", self.cleanup_key_edit)
         form.addRow("", self.auto_chk)
         form.addRow("", self.refresh_btn)
@@ -208,6 +212,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.clone_btn.clicked.connect(self._on_clone_voice)
         self.del_voice_btn.clicked.connect(self._on_delete_voice)
         self.quality_slider.valueChanged.connect(self._on_quality_changed)
+        self.cleanup_cb.currentTextChanged.connect(self._on_cleanup_backend_changed)
 
     # ---- device population + config <-> widgets ---------------------------
 
@@ -326,8 +331,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.quality_lbl.setText(str(self.cfg.clone_timesteps))
         self._select_key(self.key_cb, PTT_KEYS, self.cfg.ptt_key)
         self._select_key(self.cleanup_cb, CLEANUP_BACKENDS, self.cfg.corrector)
-        self.cleanup_model_edit.setText(self.cfg.corrector_model)
+        self.cleanup_model_cb.setCurrentText(self.cfg.corrector_model)
         self.cleanup_key_edit.setText(self.cfg.corrector_api_key)
+        self.cleanup_key_edit.setEnabled(self.cfg.corrector == "anthropic")
         self.auto_chk.setChecked(self.cfg.auto_speak)
 
     def _widgets_to_cfg(self) -> None:
@@ -340,7 +346,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cfg.clone_timesteps = self.quality_slider.value()
         self.cfg.ptt_key = PTT_KEYS[self.key_cb.currentText()]
         self.cfg.corrector = CLEANUP_BACKENDS[self.cleanup_cb.currentText()]
-        self.cfg.corrector_model = self.cleanup_model_edit.text().strip()
+        self.cfg.corrector_model = self.cleanup_model_cb.currentText().strip()
         self.cfg.corrector_api_key = self.cleanup_key_edit.text().strip()
         self.cfg.auto_speak = self.auto_chk.isChecked()
 
@@ -418,6 +424,48 @@ class MainWindow(QtWidgets.QMainWindow):
         if tts is not None and hasattr(tts, "inference_timesteps"):
             tts.inference_timesteps = value
 
+    def _on_cleanup_backend_changed(self, label: str) -> None:
+        backend = CLEANUP_BACKENDS.get(label, "off")
+        self.cleanup_key_edit.setEnabled(backend == "anthropic")
+        self._populate_cleanup_models(backend)
+
+    def _populate_cleanup_models(self, backend: str) -> None:
+        """Fill the model dropdown for the selected cleanup backend.
+
+        Claude models are a fixed list; Ollama models are probed from the local
+        server in the background (a down/absent Ollama must not freeze the UI).
+        Keeps whatever the user has typed/selected.
+        """
+        keep = self.cleanup_model_cb.currentText().strip()
+        self.cleanup_model_cb.blockSignals(True)
+        self.cleanup_model_cb.clear()
+        if backend == "anthropic":
+            self.cleanup_model_cb.addItems(CLAUDE_MODELS)
+        if keep:
+            self.cleanup_model_cb.setCurrentText(keep)
+        self.cleanup_model_cb.blockSignals(False)
+
+        if backend == "ollama" and not self._pending_cleanup_models:
+            host = self.cfg.corrector_ollama_host
+
+            def worker():
+                models = list_ollama_models(host)
+                self._pending_cleanup_models = models or [""]  # sentinel: probe done
+
+            threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_cleanup_models(self, models) -> None:
+        keep = self.cleanup_model_cb.currentText().strip()
+        self.cleanup_model_cb.blockSignals(True)
+        self.cleanup_model_cb.clear()
+        self.cleanup_model_cb.addItems([m for m in models if m])
+        if keep:
+            self.cleanup_model_cb.setCurrentText(keep)
+        self.cleanup_model_cb.blockSignals(False)
+        real = [m for m in models if m]
+        self._status(f"found {len(real)} Ollama model(s)" if real else
+                     "no Ollama models found — is Ollama running? (ollama pull llama3.1:8b)")
+
     def _on_key_changed(self, label: str) -> None:
         name = PTT_KEYS.get(label)
         if name:
@@ -433,6 +481,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._pending_cameras is not None:   # background scan finished
             cams, self._pending_cameras = self._pending_cameras, None
             self._apply_camera_scan(cams)
+        if self._pending_cleanup_models is not None:   # Ollama probe finished
+            models, self._pending_cleanup_models = self._pending_cleanup_models, None
+            self._apply_cleanup_models(models)
 
         # Always mirror progress to the UI — including during Start (model load
         # + voice warm-up), which is the slowest phase and needs feedback.
@@ -495,7 +546,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.talk_btn.setEnabled(running)
         for w in (self.camera_cb, self.mic_cb, self.monitor_cb, self.voice_cb,
                   self.clone_engine_cb, self.refresh_btn, self.clone_btn,
-                  self.del_voice_btn, self.cleanup_cb, self.cleanup_model_edit,
+                  self.del_voice_btn, self.cleanup_cb, self.cleanup_model_cb,
                   self.cleanup_key_edit):
             w.setEnabled(not running)
 

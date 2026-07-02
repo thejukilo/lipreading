@@ -16,10 +16,17 @@ Off by default. Two backends, chosen in the **Text cleanup** dropdown:
 
 1. Install Ollama: https://ollama.com
 2. Pull a model: `ollama pull llama3.1:8b` (or `qwen2.5:7b`, etc.)
-3. In the app: **Text cleanup → Local LLM (Ollama)**. Leave **Cleanup model** blank
-   for the default (`llama3.1:8b`) or type the model you pulled.
+3. In the app: **Text cleanup → Local LLM (Ollama)**. The **Cleanup model**
+   dropdown auto-fills with the models you've pulled — pick `llama3.1:8b` (or
+   type any model name; the field is editable).
 
 Runs at `http://localhost:11434`. Nothing leaves your machine.
+
+> The cleanup prompt is deliberately conservative — it fixes lipreading
+> misrecognitions (dog/god, meeting/beating) but is told **not** to paraphrase or
+> swap correct words for synonyms (it keeps "supermarket" and "car" as-is).
+> Smaller local models occasionally still over-edit; a larger model (or the
+> Claude backend) sticks closer to your words.
 
 ## Claude (cloud)
 
