@@ -64,11 +64,17 @@ with the **Delete** button next to the Voice dropdown.
 - WAV uploads only for now (mp3/m4a aren't decoded — record in-app or convert to
   WAV first).
 
-## Latency note
+## Speed vs. quality
 
-XTTS synthesis takes ~1–3s per sentence on a GPU. With the review step that's
-fine; with **Speak immediately** mode it adds a beat before your voice plays.
-Piper (the default voice) is faster if you want minimal delay.
+The **Voice quality** slider (Faster ⟷ Better) sets VoxCPM's inference steps
+(4–24, default 10). Lower = faster synthesis, slightly rougher; higher = smoother
+but slower. It applies **live** — drag it while running and the next sentence
+uses the new value; no restart needed. Around 6 is a good "fast" setting, 10–14
+for best quality.
+
+The voice model is preloaded at **Start** (you'll see "warming up voice…"), so
+the first play isn't slow. Piper (the default non-cloned voice) is still the
+fastest option if you want minimal delay for quick replies.
 
 ## Command line
 

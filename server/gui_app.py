@@ -103,6 +103,25 @@ class MainWindow(QtWidgets.QMainWindow):
         voice_row_w.setLayout(voice_row)
         self.clone_engine_cb = QtWidgets.QComboBox()
         self.clone_engine_cb.addItems(list(CLONE_ENGINES.keys()))
+
+        # Cloned-voice quality/speed (VoxCPM inference steps): low = faster.
+        self.quality_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.quality_slider.setMinimum(4)
+        self.quality_slider.setMaximum(24)
+        self.quality_slider.setSingleStep(1)
+        self.quality_slider.setPageStep(2)
+        self.quality_slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
+        self.quality_slider.setTickInterval(4)
+        self.quality_lbl = QtWidgets.QLabel("10")
+        self.quality_lbl.setMinimumWidth(28)
+        q_row = QtWidgets.QHBoxLayout()
+        q_row.addWidget(QtWidgets.QLabel("Faster"))
+        q_row.addWidget(self.quality_slider, 1)
+        q_row.addWidget(QtWidgets.QLabel("Better"))
+        q_row.addWidget(self.quality_lbl)
+        quality_row_w = QtWidgets.QWidget()
+        quality_row_w.setLayout(q_row)
+
         self.key_cb = QtWidgets.QComboBox()
         self.key_cb.addItems(list(PTT_KEYS.keys()))
         self.auto_chk = QtWidgets.QCheckBox("Speak immediately (skip review)")
@@ -114,6 +133,7 @@ class MainWindow(QtWidgets.QMainWindow):
         form.addRow("Monitor speakers:", self.monitor_cb)
         form.addRow("Voice:", voice_row_w)
         form.addRow("Cloning engine:", self.clone_engine_cb)
+        form.addRow("Voice quality:", quality_row_w)
         form.addRow("Push-to-talk key:", self.key_cb)
         form.addRow("", self.auto_chk)
         form.addRow("", self.refresh_btn)
@@ -173,6 +193,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.key_cb.currentTextChanged.connect(self._on_key_changed)
         self.clone_btn.clicked.connect(self._on_clone_voice)
         self.del_voice_btn.clicked.connect(self._on_delete_voice)
+        self.quality_slider.valueChanged.connect(self._on_quality_changed)
 
     # ---- device population + config <-> widgets ---------------------------
 
@@ -287,6 +308,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._select_data(self.monitor_cb, self.cfg.monitor_device)
         self._select_data(self.voice_cb, self.cfg.voice)
         self._select_key(self.clone_engine_cb, CLONE_ENGINES, self.cfg.clone_engine)
+        self.quality_slider.setValue(self.cfg.clone_timesteps)
+        self.quality_lbl.setText(str(self.cfg.clone_timesteps))
         self._select_key(self.key_cb, PTT_KEYS, self.cfg.ptt_key)
         self.auto_chk.setChecked(self.cfg.auto_speak)
 
@@ -297,6 +320,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cfg.monitor_device = self.monitor_cb.currentData()
         self.cfg.voice = self.voice_cb.currentData() or "piper"
         self.cfg.clone_engine = CLONE_ENGINES[self.clone_engine_cb.currentText()]
+        self.cfg.clone_timesteps = self.quality_slider.value()
         self.cfg.ptt_key = PTT_KEYS[self.key_cb.currentText()]
         self.cfg.auto_speak = self.auto_chk.isChecked()
 
@@ -365,6 +389,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _on_speak(self) -> None:
         self.session.speak(self.transcript.text())
+
+    def _on_quality_changed(self, value: int) -> None:
+        self.quality_lbl.setText(str(value))
+        self.cfg.clone_timesteps = value
+        # Apply live if a cloned voice is currently running (no restart needed).
+        tts = getattr(self.session, "tts", None)
+        if tts is not None and hasattr(tts, "inference_timesteps"):
+            tts.inference_timesteps = value
 
     def _on_key_changed(self, label: str) -> None:
         name = PTT_KEYS.get(label)
