@@ -16,6 +16,10 @@ reboot. Then from then on just **double-click `run.bat`** — no terminal.
 
 > If the app doesn't appear, run **`run_debug.bat`** instead: it keeps a console
 > open and prints the error.
+>
+> The launchers auto-find your virtual env in the repo root **or one level up**
+> (`.venv`/`venv`). If yours is elsewhere, open `run.bat` and set the `VENV=`
+> line to its folder.
 
 ## The window
 
