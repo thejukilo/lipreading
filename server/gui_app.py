@@ -557,7 +557,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Right: collected items
         right = QtWidgets.QVBoxLayout()
-        right.addWidget(QtWidgets.QLabel("Collected examples:"))
+        right.addWidget(QtWidgets.QLabel("Training set (recorded here + added from the Speak tab):"))
         self.teach_list = QtWidgets.QListWidget()
         self.teach_del_btn = QtWidgets.QPushButton("Delete selected phrase")
         self.teach_del_btn.clicked.connect(self._teach_delete)
