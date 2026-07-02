@@ -33,11 +33,30 @@ powershell -ExecutionPolicy Bypass -File scripts\setup_windows.ps1
 This lays down:
 
 ```
-third_party/auto_avsr/                    # model code, tokenizer, vendored espnet
-checkpoints/vsr_trlrs3_base.pth           # English VSR base checkpoint (LRS3)
-models/blaze_face_short_range.tflite      # mediapipe Tasks face detector
-media/demo.mp4                            # auto_avsr's demo clip
+third_party/auto_avsr/                       # model code, tokenizer, vendored espnet
+checkpoints/vsr_trlrs2lrs3vox2avsp_base.pth  # best VSR checkpoint (20.3% WER)
+models/blaze_face_short_range.tflite         # mediapipe Tasks face detector
+media/demo.mp4                               # auto_avsr's demo clip
 ```
+
+### Which checkpoint?
+
+All auto_avsr VSR checkpoints share the same "base" architecture — only the
+training data differs — so swapping is just a different `--checkpoint` file, no
+code change. Bigger training set ⇒ lower word error rate (WER on LRS3 test):
+
+| Checkpoint | Train data | WER | Drive id |
+|---|---|---|---|
+| `vsr_trlrs3_base.pth` | 438h | 36.0% | `12PNM5szUsk_CuaV1yB9dL_YWvSM1zvAd` |
+| `vsr_trlrs3vox2_base.pth` | 1759h | 24.6% | `1shcWXUK2iauRhW9NbwCc25FjU1CoMm8i` |
+| **`vsr_trlrs2lrs3vox2avsp_base.pth`** (default) | 3291h | **20.3%** | `1r1kx7l9sWnDOCnaFHIGvOtzuhFyFA88_` |
+
+The setup script downloads the best one via `gdown` (~1GB). To try another, grab
+it with `gdown <id> -O checkpoints\<name>.pth` and pass `--checkpoint`.
+
+> These WER numbers are on LRS3's clean, well-framed studio clips. Live webcam
+> footage (angle, lighting, distance) will be worse — which is exactly why the
+> lowest-WER checkpoint is worth the extra download.
 
 > **Note on the face detector.** auto_avsr's bundled mediapipe detector uses the
 > old `mp.solutions` API, which Google **removed** in mediapipe ≥ ~0.10.18 (on
@@ -50,7 +69,7 @@ media/demo.mp4                            # auto_avsr's demo clip
 ## Run it
 
 ```powershell
-python -m server.engine --video media\demo.mp4 --checkpoint checkpoints\vsr_trlrs3_base.pth
+python -m server.engine --video media\demo.mp4 --checkpoint checkpoints\vsr_trlrs2lrs3vox2avsp_base.pth
 ```
 
 Expected: a `===== TRANSCRIPT =====` block with the spoken text, plus load and
@@ -64,7 +83,7 @@ English (it won't be perfect — that's fine for step 1).
 | `--device` | auto (`cuda:0` if available) | Force `cpu` to sanity-check without GPU. |
 | `--detector` | `mediapipe` | `mediapipe` is easiest to install on Windows. `retinaface` needs the ibug packages but can be more robust. |
 | `--auto-avsr-dir` | `$AUTO_AVSR_DIR` or `third_party/auto_avsr` | Point at a different checkout. |
-| `--checkpoint` | `checkpoints/vsr_trlrs3_base.pth` | Try `vsr_trlrs2lrs3vox2avsp_base.pth` (WER 20.3) for better accuracy. |
+| `--checkpoint` | `checkpoints/vsr_trlrs2lrs3vox2avsp_base.pth` | Best available (20.3% WER). See the checkpoint table above for smaller/faster options. |
 
 ## Troubleshooting
 

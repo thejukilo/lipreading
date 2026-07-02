@@ -33,12 +33,21 @@ if (Test-Path (Join-Path $autoAvsr "lightning.py")) {
     git clone --depth 1 https://github.com/mpc001/auto_avsr.git $autoAvsr
 }
 
-$ckpt = Join-Path $ckptDir "vsr_trlrs3_base.pth"
+# VSR checkpoint. Default = best available (20.3% WER, 3291h training, ~1GB).
+# All are the same "base" architecture — only training data differs — so any is
+# a drop-in swap. Options (filename => Google Drive id):
+#   vsr_trlrs3_base.pth              36.0% WER   12PNM5szUsk_CuaV1yB9dL_YWvSM1zvAd
+#   vsr_trlrs3vox2_base.pth          24.6% WER   1shcWXUK2iauRhW9NbwCc25FjU1CoMm8i
+#   vsr_trlrs2lrs3vox2avsp_base.pth  20.3% WER   1r1kx7l9sWnDOCnaFHIGvOtzuhFyFA88_
+$ckptName = "vsr_trlrs2lrs3vox2avsp_base.pth"
+$ckptId   = "1r1kx7l9sWnDOCnaFHIGvOtzuhFyFA88_"
+$ckpt = Join-Path $ckptDir $ckptName
 if (Test-Path $ckpt) {
     Write-Host "[setup] checkpoint already present at $ckpt"
 } else {
-    Write-Host "[setup] downloading VSR checkpoint (vsr_trlrs3_base.pth)..."
-    Invoke-WebRequest -Uri "http://www.doc.ic.ac.uk/~pm4115/autoAVSR/vsr_trlrs3_base.pth" -OutFile $ckpt
+    Write-Host "[setup] downloading VSR checkpoint $ckptName (~1GB) via gdown..."
+    # gdown handles Google Drive's large-file confirmation token (curl can't).
+    gdown $ckptId -O $ckpt
 }
 
 $blaze = Join-Path $modelDir "blaze_face_short_range.tflite"
@@ -59,4 +68,4 @@ if (Test-Path $demo) {
 
 Write-Host ""
 Write-Host "[setup] done. Run the smoke test:"
-Write-Host "  python -m server.engine --video media\demo.mp4 --checkpoint checkpoints\vsr_trlrs3_base.pth"
+Write-Host "  python -m server.engine --video media\demo.mp4 --checkpoint checkpoints\$ckptName"

@@ -19,12 +19,19 @@ else
   git clone --depth 1 https://github.com/mpc001/auto_avsr.git "$auto_avsr"
 fi
 
-ckpt="$root/checkpoints/vsr_trlrs3_base.pth"
+# VSR checkpoint. Default = best available (20.3% WER, 3291h training, ~1GB).
+# All share the same "base" architecture, so any is a drop-in swap. Options:
+#   vsr_trlrs3_base.pth              36.0% WER   12PNM5szUsk_CuaV1yB9dL_YWvSM1zvAd
+#   vsr_trlrs3vox2_base.pth          24.6% WER   1shcWXUK2iauRhW9NbwCc25FjU1CoMm8i
+#   vsr_trlrs2lrs3vox2avsp_base.pth  20.3% WER   1r1kx7l9sWnDOCnaFHIGvOtzuhFyFA88_
+ckpt_name="vsr_trlrs2lrs3vox2avsp_base.pth"
+ckpt_id="1r1kx7l9sWnDOCnaFHIGvOtzuhFyFA88_"
+ckpt="$root/checkpoints/$ckpt_name"
 if [ -f "$ckpt" ]; then
   echo "[setup] checkpoint already present"
 else
-  echo "[setup] downloading VSR checkpoint..."
-  curl -L "http://www.doc.ic.ac.uk/~pm4115/autoAVSR/vsr_trlrs3_base.pth" -o "$ckpt"
+  echo "[setup] downloading VSR checkpoint $ckpt_name (~1GB) via gdown..."
+  gdown "$ckpt_id" -O "$ckpt"   # handles Google Drive large-file confirm token
 fi
 
 blaze="$root/models/blaze_face_short_range.tflite"
@@ -45,4 +52,4 @@ fi
 
 echo
 echo "[setup] done. Run the smoke test:"
-echo "  python -m server.engine --video media/demo.mp4 --checkpoint checkpoints/vsr_trlrs3_base.pth"
+echo "  python -m server.engine --video media/demo.mp4 --checkpoint checkpoints/$ckpt_name"

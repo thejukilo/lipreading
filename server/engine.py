@@ -160,7 +160,7 @@ def _cli() -> int:
     parser.add_argument("--video", required=True, help="Path to the input video file.")
     parser.add_argument(
         "--checkpoint",
-        default=os.environ.get("VSR_CHECKPOINT", "checkpoints/vsr_trlrs3_base.pth"),
+        default=os.environ.get("VSR_CHECKPOINT", "checkpoints/vsr_trlrs2lrs3vox2avsp_base.pth"),
         help="Path to the VSR .pth checkpoint.",
     )
     parser.add_argument(

@@ -24,3 +24,4 @@ mediapipe
 opencv-python
 scikit-image
 numpy
+gdown        # downloads the better checkpoints from Google Drive (large-file token)

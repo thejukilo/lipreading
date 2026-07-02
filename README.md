@@ -52,7 +52,7 @@ py -3.10 -m venv .venv; .\.venv\Scripts\Activate.ps1
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 pip install -r requirements.txt
 powershell -ExecutionPolicy Bypass -File scripts\setup_windows.ps1
-python -m server.engine --video media\demo.mp4 --checkpoint checkpoints\vsr_trlrs3_base.pth
+python -m server.engine --video media\demo.mp4 --checkpoint checkpoints\vsr_trlrs2lrs3vox2avsp_base.pth
 ```
 
 Full walkthrough and troubleshooting: [`docs/step1-smoke-test.md`](docs/step1-smoke-test.md).
