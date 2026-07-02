@@ -74,7 +74,14 @@ class _ClipDataset:
                     on_msg(f"skipped “{e['phrase']}” (no face detected)")
                 continue
             vid = torch.tensor(crop).permute(0, 3, 1, 2)   # (T,3,96,96)
-            tokens = text_transform.tokenize(e["phrase"])
+            # auto_avsr's tokenizer/model vocabulary is UPPERCASE (LRS3). Lowercase
+            # labels tokenize to <unk> — so the model would learn to output <unk>.
+            tokens = text_transform.tokenize(e["phrase"].upper())
+            unk = text_transform.hashmap.get("<unk>")
+            if unk is not None and len(tokens) and all(int(t) == int(unk) for t in tokens):
+                if on_msg:
+                    on_msg(f"skipped “{e['phrase']}” (no known tokens)")
+                continue
             self.samples.append((vid, tokens))
 
     def __len__(self):
@@ -92,8 +99,8 @@ def finetune(
     auto_avsr_dir: str | None = None,
     detector: str = "mediapipe",
     device: str | None = None,
-    epochs: int = 10,
-    lr: float = 1e-5,
+    epochs: int = 15,
+    lr: float = 5e-5,
     batch_size: int = 2,
     on_progress=None,
 ) -> str:
