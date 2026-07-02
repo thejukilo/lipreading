@@ -9,8 +9,11 @@ Run:  python -m server.gui_app   (or double-click run.bat)
 
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 import threading
+import time
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -18,14 +21,20 @@ from .devices import list_audio_outputs, list_cameras
 from .hotkey import PushToTalkListener
 from .session import LiveSession
 from .settings import load_config, save_config
+from .voices import VoicesStore
+
+# A short, phonetically varied passage for recording a clean voice reference.
+RECORD_PASSAGE = (
+    "The quick brown fox jumps over the lazy dog. I usually enjoy a good cup of "
+    "coffee in the morning, and a short walk before I start my work. Please call "
+    "me back when you get a chance — it should only take a few minutes."
+)
 
 # Push-to-talk key: friendly label -> internal name.
 PTT_KEYS = {
     "Right Ctrl": "ctrl_r", "Left Ctrl": "ctrl_l", "Right Alt": "alt_r",
     "Space": "space", "F7": "f7", "F8": "f8", "F9": "f9", "F10": "f10",
 }
-VOICES = {"Piper (natural, local)": "piper", "Windows voice (SAPI)": "sapi"}
-
 STATE_BANNER = {
     LiveSession.IDLE: ("Ready — hold your push-to-talk key and mouth a sentence", "#2e7d32"),
     LiveSession.RECORDING: ("● Recording — mouth your sentence", "#c62828"),
@@ -40,6 +49,7 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.setWindowTitle("Lipreading → Voice")
         self.cfg = load_config()
+        self.voices = VoicesStore()
         self.session = LiveSession(self.cfg)
         self.ptt = PushToTalkListener(self.cfg.ptt_key, self._ptt_down, self._ptt_up)
         self._starting = False
@@ -47,6 +57,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._build_ui()
         self._populate_devices()
+        self._populate_voices()
         self._apply_cfg_to_widgets()
         self._set_running_ui(False)
 
@@ -75,7 +86,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.monitor_chk = QtWidgets.QCheckBox("Hear it on my speakers (monitor)")
         self.monitor_cb = QtWidgets.QComboBox()
         self.voice_cb = QtWidgets.QComboBox()
-        self.voice_cb.addItems(list(VOICES.keys()))
+        self.clone_btn = QtWidgets.QPushButton("＋ Clone")
+        self.del_voice_btn = QtWidgets.QPushButton("Delete")
+        voice_row = QtWidgets.QHBoxLayout()
+        voice_row.addWidget(self.voice_cb, 1)
+        voice_row.addWidget(self.clone_btn)
+        voice_row.addWidget(self.del_voice_btn)
+        voice_row_w = QtWidgets.QWidget()
+        voice_row_w.setLayout(voice_row)
         self.key_cb = QtWidgets.QComboBox()
         self.key_cb.addItems(list(PTT_KEYS.keys()))
         self.auto_chk = QtWidgets.QCheckBox("Speak immediately (skip review)")
@@ -85,7 +103,7 @@ class MainWindow(QtWidgets.QMainWindow):
         form.addRow("Microphone to Meet:", self.mic_cb)
         form.addRow("", self.monitor_chk)
         form.addRow("Monitor speakers:", self.monitor_cb)
-        form.addRow("Voice:", self.voice_cb)
+        form.addRow("Voice:", voice_row_w)
         form.addRow("Push-to-talk key:", self.key_cb)
         form.addRow("", self.auto_chk)
         form.addRow("", self.refresh_btn)
@@ -143,6 +161,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.discard_btn.clicked.connect(self.session.discard)
         self.monitor_chk.toggled.connect(lambda v: self.session.set_monitor(v))
         self.key_cb.currentTextChanged.connect(self._on_key_changed)
+        self.clone_btn.clicked.connect(self._on_clone_voice)
+        self.del_voice_btn.clicked.connect(self._on_delete_voice)
 
     # ---- device population + config <-> widgets ---------------------------
 
@@ -182,13 +202,45 @@ class MainWindow(QtWidgets.QMainWindow):
                 "then Refresh — Meet needs 'CABLE Output' as its mic."
             )
 
+    def _populate_voices(self) -> None:
+        """Voice dropdown = built-ins + cloned voices. itemData holds the voice id."""
+        current = self.voice_cb.currentData() if self.voice_cb.count() else self.cfg.voice
+        self.voice_cb.blockSignals(True)
+        self.voice_cb.clear()
+        self.voice_cb.addItem("Piper (natural, local)", "piper")
+        self.voice_cb.addItem("Windows voice (SAPI)", "sapi")
+        for v in self.voices.list_voices():
+            self.voice_cb.addItem(f"🗣 {v['name']} (your voice)", f"clone:{v['slug']}")
+        self._select_data(self.voice_cb, current)
+        self.voice_cb.blockSignals(False)
+
+    def _on_clone_voice(self) -> None:
+        dlg = CloneVoiceDialog(self.voices, self)
+        if dlg.exec() == QtWidgets.QDialog.Accepted and dlg.result_slug:
+            self._populate_voices()
+            self._select_data(self.voice_cb, f"clone:{dlg.result_slug}")
+            self._status(f"voice '{dlg.result_name}' saved — it applies on next Start")
+
+    def _on_delete_voice(self) -> None:
+        vid = self.voice_cb.currentData()
+        if not isinstance(vid, str) or not vid.startswith("clone:"):
+            self._status("select one of your cloned voices to delete")
+            return
+        slug = vid.split(":", 1)[1]
+        if QtWidgets.QMessageBox.question(
+            self, "Delete voice", f"Delete the cloned voice '{slug}'?"
+        ) == QtWidgets.QMessageBox.Yes:
+            self.voices.delete(slug)
+            self._populate_voices()
+            self._status(f"deleted voice '{slug}'")
+
     def _apply_cfg_to_widgets(self) -> None:
         self._select_data(self.camera_cb, self.cfg.camera)
         if self.cfg.output_device is not None:
             self._select_text_contains(self.mic_cb, str(self.cfg.output_device))
         self.monitor_chk.setChecked(self.cfg.monitor_on)
         self._select_data(self.monitor_cb, self.cfg.monitor_device)
-        self._select_key(self.voice_cb, VOICES, self.cfg.tts)
+        self._select_data(self.voice_cb, self.cfg.voice)
         self._select_key(self.key_cb, PTT_KEYS, self.cfg.ptt_key)
         self.auto_chk.setChecked(self.cfg.auto_speak)
 
@@ -197,7 +249,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cfg.output_device = self.mic_cb.currentData()
         self.cfg.monitor_on = self.monitor_chk.isChecked()
         self.cfg.monitor_device = self.monitor_cb.currentData()
-        self.cfg.tts = VOICES[self.voice_cb.currentText()]
+        self.cfg.voice = self.voice_cb.currentData() or "piper"
         self.cfg.ptt_key = PTT_KEYS[self.key_cb.currentText()]
         self.cfg.auto_speak = self.auto_chk.isChecked()
 
@@ -330,7 +382,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.start_btn.setText("Stop" if running else "Start")
         self.talk_btn.setEnabled(running)
         for w in (self.camera_cb, self.mic_cb, self.monitor_cb, self.voice_cb,
-                  self.refresh_btn):
+                  self.refresh_btn, self.clone_btn, self.del_voice_btn):
             w.setEnabled(not running)
 
     def _status(self, msg: str) -> None:
@@ -342,6 +394,210 @@ class MainWindow(QtWidgets.QMainWindow):
             self.session.shutdown()
         finally:
             super().closeEvent(event)
+
+
+class CloneVoiceDialog(QtWidgets.QDialog):
+    """Wizard: name a voice, record or upload a reference clip, preview, save."""
+
+    def __init__(self, store: VoicesStore, parent=None) -> None:
+        super().__init__(parent)
+        self.store = store
+        self.setWindowTitle("Clone a voice")
+        self.setMinimumWidth(460)
+        self.result_slug = None
+        self.result_name = ""
+        self._source_wav = None      # path to the reference audio to save
+        self._recorder = None
+        self._rec_timer = QtCore.QTimer(self)
+        self._rec_timer.timeout.connect(self._update_rec_time)
+
+        v = QtWidgets.QVBoxLayout(self)
+
+        self.name_edit = QtWidgets.QLineEdit()
+        self.name_edit.setPlaceholderText("e.g. My voice")
+        nrow = QtWidgets.QHBoxLayout()
+        nrow.addWidget(QtWidgets.QLabel("Name:"))
+        nrow.addWidget(self.name_edit, 1)
+        v.addLayout(nrow)
+
+        self.tabs = QtWidgets.QTabWidget()
+        self.tabs.addTab(self._record_tab(), "Record")
+        self.tabs.addTab(self._upload_tab(), "Upload a file")
+        v.addWidget(self.tabs)
+
+        self.preview_btn = QtWidgets.QPushButton("Preview voice (loads model, slow first time)")
+        self.preview_btn.clicked.connect(self._on_preview)
+        v.addWidget(self.preview_btn)
+
+        self.info = QtWidgets.QLabel(
+            "Tip: 15–30s of clear speech in a quiet room clones best. "
+            "The XTTS model is non-commercial (personal use)."
+        )
+        self.info.setWordWrap(True)
+        self.info.setStyleSheet("color:#666; font-size:11px;")
+        v.addWidget(self.info)
+
+        buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Save | QtWidgets.QDialogButtonBox.Cancel
+        )
+        buttons.accepted.connect(self._on_save)
+        buttons.rejected.connect(self.reject)
+        v.addWidget(buttons)
+
+    def _record_tab(self) -> QtWidgets.QWidget:
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+        passage = QtWidgets.QLabel("Read this aloud:\n\n" + RECORD_PASSAGE)
+        passage.setWordWrap(True)
+        passage.setStyleSheet("background:#f3f3f3; padding:8px; border-radius:4px;")
+        self.rec_btn = QtWidgets.QPushButton("● Start recording")
+        self.rec_btn.clicked.connect(self._toggle_record)
+        self.rec_time = QtWidgets.QLabel("0.0s")
+        self.rec_play_btn = QtWidgets.QPushButton("Play back")
+        self.rec_play_btn.setEnabled(False)
+        self.rec_play_btn.clicked.connect(self._play_recorded)
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self.rec_btn)
+        row.addWidget(self.rec_time)
+        row.addStretch(1)
+        row.addWidget(self.rec_play_btn)
+        lay.addWidget(passage)
+        lay.addLayout(row)
+        return w
+
+    def _upload_tab(self) -> QtWidgets.QWidget:
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+        self.file_lbl = QtWidgets.QLabel("No file chosen (WAV).")
+        self.file_lbl.setWordWrap(True)
+        btn = QtWidgets.QPushButton("Choose WAV file…")
+        btn.clicked.connect(self._choose_file)
+        lay.addWidget(btn)
+        lay.addWidget(self.file_lbl)
+        lay.addStretch(1)
+        return w
+
+    # ---- record ----------------------------------------------------------
+
+    def _toggle_record(self) -> None:
+        from .audio_in import Recorder
+
+        if self._recorder is None:
+            try:
+                self._recorder = Recorder()
+                self._recorder.start()
+            except Exception as e:
+                self._recorder = None
+                QtWidgets.QMessageBox.warning(self, "Microphone", f"Could not start recording:\n{e}")
+                return
+            self.rec_btn.setText("■ Stop recording")
+            self.rec_play_btn.setEnabled(False)
+            self._rec_timer.start(100)
+        else:
+            self._rec_timer.stop()
+            data = self._recorder.stop()
+            self._recorder = None
+            self.rec_btn.setText("● Start recording")
+            path = os.path.join(tempfile.gettempdir(), f"voice_rec_{int(time.time())}.wav")
+            try:
+                import soundfile as sf
+
+                sf.write(path, data, 22050, subtype="PCM_16")
+                self._source_wav = path
+                self.rec_play_btn.setEnabled(True)
+                self.rec_time.setText(f"{len(data) / 22050:.1f}s recorded")
+            except Exception as e:
+                QtWidgets.QMessageBox.warning(self, "Recording", f"Could not save recording:\n{e}")
+
+    def _update_rec_time(self) -> None:
+        if self._recorder is not None:
+            self.rec_time.setText(f"{self._recorder.seconds:.1f}s")
+
+    def _play_recorded(self) -> None:
+        if self._source_wav:
+            self._play(self._source_wav)
+
+    # ---- upload ----------------------------------------------------------
+
+    def _choose_file(self) -> None:
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Choose reference audio", "", "Audio (*.wav)"
+        )
+        if path:
+            self._source_wav = path
+            self.file_lbl.setText(path)
+
+    # ---- preview / save --------------------------------------------------
+
+    def _current_source(self) -> str | None:
+        # The active tab decides which source we use.
+        return self._source_wav
+
+    def _on_preview(self) -> None:
+        src = self._current_source()
+        if not src:
+            QtWidgets.QMessageBox.information(self, "Preview", "Record or choose a clip first.")
+            return
+        self.preview_btn.setEnabled(False)
+        self.preview_btn.setText("Synthesizing…")
+        threading.Thread(target=self._preview_worker, args=(src,), daemon=True).start()
+
+    def _preview_worker(self, src: str) -> None:
+        try:
+            from .audio_out import play_wav
+            from .tts import XttsTTS
+
+            tts = XttsTTS(speaker_wav=src)
+            wav = tts.synthesize_to_wav("Hi, this is my cloned voice. How does it sound?")
+            play_wav(wav, device=None, monitor=False)  # default speakers
+            try:
+                os.remove(wav)
+            except OSError:
+                pass
+        except Exception as e:
+            print(f"[clone] preview failed: {e}")
+        finally:
+            QtCore.QMetaObject.invokeMethod(self, "_preview_done", QtCore.Qt.QueuedConnection)
+
+    @QtCore.Slot()
+    def _preview_done(self) -> None:
+        self.preview_btn.setEnabled(True)
+        self.preview_btn.setText("Preview voice (loads model, slow first time)")
+
+    def _play(self, wav: str) -> None:
+        from .audio_out import play_wav
+
+        try:
+            play_wav(wav, device=None, monitor=False, blocking=False)
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "Playback", str(e))
+
+    def _on_save(self) -> None:
+        name = self.name_edit.text().strip()
+        src = self._current_source()
+        if not name:
+            QtWidgets.QMessageBox.information(self, "Save", "Give the voice a name.")
+            return
+        if not src:
+            QtWidgets.QMessageBox.information(self, "Save", "Record or choose a reference clip first.")
+            return
+        try:
+            slug = self.store.add_from_wav(name, src, created=time.time())
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "Save", f"Could not save voice:\n{e}")
+            return
+        self.result_slug = slug
+        self.result_name = name
+        self.accept()
+
+    def closeEvent(self, event) -> None:
+        self._rec_timer.stop()
+        if self._recorder is not None:
+            try:
+                self._recorder.stop()
+            except Exception:
+                pass
+        super().closeEvent(event)
 
 
 def main() -> int:

@@ -27,7 +27,7 @@ everything around it:
 | Phase | Goal | Status |
 |-------|------|--------|
 | **1** | English pretrained model + app + Chrome extension. Push-to-talk lipreading → prebuilt TTS voice → virtual mic → Google Meet. | In definition |
-| **2** | Still English. Wizard to fine-tune / clone the **user's own voice** for TTS. | Planned |
+| **2** | Still English. In-app wizard to **clone the user's own voice** (record or upload) and speak in it (XTTS v2). | In progress |
 | **3** | Custom **Dutch** VSR model. Parked pending Dutch data collection. | Parked |
 
 ## Phase 1 decisions (locked)
@@ -72,3 +72,10 @@ Terminal front-end (same engine):
 python -m server.live_app          # hold RIGHT CTRL, mouth a sentence, review, speak
 ```
 → [`docs/step2-live-meet.md`](docs/step2-live-meet.md)
+
+**Voice cloning (Phase 2)** — clone your own voice from a short recorded/uploaded
+clip and speak in it. In the app: **Voice → ＋ Clone**. Optional install:
+```powershell
+pip install -r requirements-voice.txt
+```
+→ [`docs/voice-cloning.md`](docs/voice-cloning.md)

@@ -107,10 +107,80 @@ class SapiTTS(TTSBackend):
         return out_path
 
 
+class XttsTTS(TTSBackend):
+    """Zero-shot voice cloning via Coqui XTTS v2.
+
+    Clones the voice in ``speaker_wav`` (a short reference clip) — no training.
+    The (large) model is cached at class level and loaded on first use, so
+    switching between cloned voices is cheap and Piper users never pay for it.
+
+    Note: the XTTS v2 model license (CPML) is non-commercial.
+    """
+
+    _model = None  # shared across instances
+
+    def __init__(self, speaker_wav: str, language: str = "en") -> None:
+        if not os.path.isfile(speaker_wav):
+            raise FileNotFoundError(f"Voice reference audio not found: {speaker_wav}")
+        self.speaker_wav = speaker_wav
+        self.language = language
+
+    @classmethod
+    def _get_model(cls):
+        if cls._model is None:
+            # Accept the non-commercial model license non-interactively so the
+            # GUI doesn't hang on a stdin prompt. (Documented for the user.)
+            os.environ.setdefault("COQUI_TOS_AGREED", "1")
+            try:
+                from TTS.api import TTS
+            except ImportError as e:
+                raise RuntimeError(
+                    "Voice cloning needs coqui-tts. Install it:\n"
+                    "  pip install coqui-tts\n"
+                    "(first synthesis also downloads the ~1.8GB XTTS v2 model)."
+                ) from e
+            import torch
+
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            cls._model = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+        return cls._model
+
+    def synthesize_to_wav(self, text: str, out_path: str | None = None) -> str:
+        out_path = out_path or _tmp_wav()
+        model = self._get_model()
+        model.tts_to_file(
+            text=text,
+            speaker_wav=self.speaker_wav,
+            language=self.language,
+            file_path=out_path,
+        )
+        return out_path
+
+
 def make_tts(backend: str = "piper", **kwargs) -> TTSBackend:
     backend = backend.lower()
     if backend == "piper":
         return PiperTTS(**kwargs)
     if backend == "sapi":
         return SapiTTS(**kwargs)
-    raise ValueError(f"Unknown TTS backend: {backend!r} (use 'piper' or 'sapi').")
+    if backend == "xtts":
+        return XttsTTS(**kwargs)
+    raise ValueError(f"Unknown TTS backend: {backend!r} (use 'piper', 'sapi', 'xtts').")
+
+
+def make_tts_for_voice(voice_id: str, store=None) -> TTSBackend:
+    """Resolve a voice id to a TTS backend.
+
+    Voice ids: ``"piper"``, ``"sapi"``, or ``"clone:<slug>"`` (a cloned voice
+    from the VoicesStore).
+    """
+    if voice_id in ("piper", "sapi"):
+        return make_tts(voice_id)
+    if voice_id.startswith("clone:"):
+        from .voices import VoicesStore
+
+        store = store or VoicesStore()
+        slug = voice_id.split(":", 1)[1]
+        return XttsTTS(speaker_wav=store.get_reference(slug))
+    # Unknown/stale selection -> safe default.
+    return make_tts("piper")

@@ -33,7 +33,8 @@ class SessionConfig:
     camera: int = 0
     width: int = 640
     height: int = 480
-    tts: str = "piper"
+    tts: str = "piper"                 # built-in engine (CLI --tts); see `voice`
+    voice: str = "piper"               # selector: "piper" | "sapi" | "clone:<slug>"
     output_device: str | int | None = "CABLE Input"   # the virtual mic
     monitor_device: str | int | None = None            # None -> default speakers
     monitor_on: bool = True
@@ -88,9 +89,9 @@ class LiveSession:
     def reconfigure_audio(self) -> None:
         """(Re)build the cheap audio bits from cfg — TTS engine, output, monitor."""
         from .audio_out import resolve_output_device
-        from .tts import make_tts
+        from .tts import make_tts_for_voice
 
-        self.tts = make_tts(self.cfg.tts)
+        self.tts = make_tts_for_voice(self.cfg.voice)
         self.out_device = resolve_output_device(self.cfg.output_device)
         self.monitor_on = self.cfg.monitor_on
 

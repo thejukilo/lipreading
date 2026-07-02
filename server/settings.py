@@ -17,7 +17,7 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 
 # Only these fields are surfaced/saved by the GUI.
 SAVED_FIELDS = (
-    "camera", "tts", "output_device", "monitor_device", "monitor_on",
+    "camera", "tts", "voice", "output_device", "monitor_device", "monitor_on",
     "auto_speak", "device", "ptt_key",
 )
 

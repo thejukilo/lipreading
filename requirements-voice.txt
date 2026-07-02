@@ -1,0 +1,13 @@
+# Voice cloning (optional) — install separately AFTER the main requirements so it
+# doesn't disturb your CUDA torch build:
+#
+#   pip install -r requirements-voice.txt
+#
+# coqui-tts provides XTTS v2 (zero-shot cloning). First synthesis downloads the
+# ~1.8GB model to your TTS cache. The XTTS v2 model license (CPML) is
+# NON-COMMERCIAL — fine for personal use; swap the backend for a product.
+#
+# If pip wants to change your installed torch, pin torch to your current version
+# on the same command, e.g.:
+#   pip install -r requirements-voice.txt torch==<your-version>
+coqui-tts

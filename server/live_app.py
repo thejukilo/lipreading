@@ -103,6 +103,7 @@ def _cfg_from_args(a) -> SessionConfig:
         width=a.width,
         height=a.height,
         tts=a.tts,
+        voice=a.voice or a.tts,
         output_device=a.output_device,
         monitor_device=a.monitor_device,
         monitor_on=not a.no_monitor,
@@ -123,6 +124,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--height", type=int, default=480)
     p.add_argument("--key", default="ctrl_r", help="Push-to-talk key (default: right ctrl).")
     p.add_argument("--tts", default="piper", choices=["piper", "sapi"])
+    p.add_argument("--voice", default=None,
+                   help="Voice selector: piper | sapi | clone:<slug> (default: --tts value).")
     p.add_argument("--output-device", default="CABLE Input",
                    help="Playback device name substring or index (default: VB-Cable).")
     p.add_argument("--monitor-device", default=None,
