@@ -1,0 +1,43 @@
+# Lipreading → Voice
+
+Silent-speech interface: a user "speaks" without making sound, the system
+lipreads from the webcam, transcribes it, converts it to speech in a chosen
+voice, and plays that audio into a meeting **as if the user were talking**.
+
+Built on prior visual-speech-recognition (VSR) work — primarily
+[auto_avsr](https://github.com/mpc001/auto_avsr) and
+[AV-HuBERT](https://github.com/facebookresearch/av_hubert).
+
+## Why this is mostly a plumbing problem
+
+The lipreading model is the well-trodden part. The hard/novel engineering is
+everything around it:
+
+- A **Chrome extension cannot** run a PyTorch VSR model or spoof the microphone
+  stream Meet captures. It is a thin controller/UI only.
+- Getting audio into Google Meet "as you" requires a **virtual microphone** at
+  the OS level. Meet just records whatever mic device is selected.
+- `auto_avsr` / AV-HuBERT are built for **offline, pre-segmented, lip-cropped
+  clips** — not live streaming. Real-time streaming VSR is a later delta.
+- If the user is also on-camera in Meet, **both apps want the webcam**. Needs a
+  camera splitter (OBS virtual cam) or the user stays off-camera in Phase 1.
+
+## Phases
+
+| Phase | Goal | Status |
+|-------|------|--------|
+| **1** | English pretrained model + app + Chrome extension. Push-to-talk lipreading → prebuilt TTS voice → virtual mic → Google Meet. | In definition |
+| **2** | Still English. Wizard to fine-tune / clone the **user's own voice** for TTS. | Planned |
+| **3** | Custom **Dutch** VSR model. Parked pending Dutch data collection. | Parked |
+
+## Phase 1 decisions (locked)
+
+- **Inference:** local first (Python server on the user's machine), cloud later.
+- **Interaction:** push-to-talk (hold key → mouth an utterance → release → speak).
+- **Voice:** prebuilt/stock TTS voice first (cloning is Phase 2).
+- **Platform:** Windows, single-OS dev-grade setup.
+- **Hardware:** NVIDIA CUDA GPU.
+- **First slice:** end-to-end thin — prove the whole pipe, accuracy rough.
+
+See [`docs/phase1-design.md`](docs/phase1-design.md) for the architecture and the
+vertical-slice build plan.
