@@ -48,13 +48,11 @@ class TrainingStore:
                  created: float | None = None) -> str:
         """Save an RGB frame sequence (T,H,W,3 uint8) as a labeled clip."""
         import numpy as np
-        import torch
-        import torchvision
 
         phrase = (phrase or "").strip()
         if not phrase:
             raise ValueError("Give the clip a phrase/word to teach.")
-        arr = np.asarray(frames_rgb, dtype=np.uint8)
+        arr = np.ascontiguousarray(frames_rgb, dtype=np.uint8)
         if arr.ndim != 4 or arr.shape[0] < MIN_FRAMES:
             raise RuntimeError(
                 f"Clip too short ({0 if arr.ndim != 4 else arr.shape[0]} frames) "
@@ -62,15 +60,58 @@ class TrainingStore:
             )
         os.makedirs(self.clips_dir, exist_ok=True)
         entries = self._load()
-        idx = len(entries)
-        name = f"{_slug(phrase)}_{idx:04d}.mp4"
-        path = os.path.join(self.clips_dir, name)
-        # torchvision.io.write_video wants a uint8 tensor of shape (T, H, W, C).
-        torchvision.io.write_video(path, torch.from_numpy(arr), fps)
+        stem = f"{_slug(phrase)}_{len(entries):04d}"
+        name = self._write_clip(arr, stem, fps)
         entries.append({"clip": name, "phrase": phrase, "frames": int(arr.shape[0]),
-                        "created": created})
+                        "fps": fps, "created": created})
         self._save(entries)
-        return path
+        return self.clip_path(name)
+
+    def _write_clip(self, arr, stem: str, fps: int) -> str:
+        """Write an mp4 with OpenCV (compact, reliable); fall back to .npz.
+
+        Avoids torchvision.io.write_video, which errors ('an integer is
+        required') on newer PyAV versions.
+        """
+        try:
+            import cv2
+
+            t, h, w = arr.shape[:3]
+            path = os.path.join(self.clips_dir, stem + ".mp4")
+            vw = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"mp4v"), float(fps), (w, h))
+            if vw.isOpened():
+                for frame in arr:
+                    vw.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+                vw.release()
+                if os.path.isfile(path) and os.path.getsize(path) > 0:
+                    return stem + ".mp4"
+        except Exception:
+            pass
+        # Fallback: lossless compressed numpy (no codec needed).
+        import numpy as np
+
+        path = os.path.join(self.clips_dir, stem + ".npz")
+        np.savez_compressed(path, frames=arr, fps=fps)
+        return stem + ".npz"
+
+    def load_clip(self, name: str):
+        """Load a stored clip back to RGB frames (T,H,W,3) — for fine-tuning."""
+        import numpy as np
+
+        path = self.clip_path(name)
+        if name.endswith(".npz"):
+            return np.load(path)["frames"]
+        import cv2
+
+        cap = cv2.VideoCapture(path)
+        frames = []
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        cap.release()
+        return np.asarray(frames, dtype=np.uint8)
 
     def items_grouped(self) -> list[dict]:
         """[{phrase, count, clips:[name,...]}, ...] sorted by phrase."""
