@@ -57,11 +57,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self._starting = False
         self._last_state = None
 
+        self._pending_cameras = None   # set by the background camera scan
+        self._scanning_cameras = False
+
         self._build_ui()
-        self._populate_devices()
+        self._populate_audio()
+        self._populate_cameras_default()   # fast; real scan runs in background
         self._populate_voices()
         self._apply_cfg_to_widgets()
         self._set_running_ui(False)
+        self._start_camera_scan()
 
         # Poll the session for preview + state (keeps all UI updates on this thread).
         self._timer = QtCore.QTimer(self)
@@ -158,7 +163,7 @@ class MainWindow(QtWidgets.QMainWindow):
         root.addLayout(right, 1)
 
         # Wiring
-        self.refresh_btn.clicked.connect(self._populate_devices)
+        self.refresh_btn.clicked.connect(self._refresh_devices)
         self.start_btn.clicked.connect(self._toggle_start)
         self.talk_btn.pressed.connect(self._ptt_down)
         self.talk_btn.released.connect(self._ptt_up)
@@ -171,18 +176,52 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # ---- device population + config <-> widgets ---------------------------
 
-    def _populate_devices(self) -> None:
-        self.camera_cb.clear()
-        try:
-            cams = list_cameras()
-        except Exception as e:
-            cams = []
-            self._status(f"camera scan failed: {e}")
-        if not cams:
-            self.camera_cb.addItem("Camera 0", 0)
-        for idx, label in cams:
-            self.camera_cb.addItem(label, idx)
+    def _refresh_devices(self) -> None:
+        self._populate_audio()
+        self._start_camera_scan()
 
+    def _populate_cameras_default(self) -> None:
+        """Fast, non-blocking: list indices 0-3 without opening the cameras.
+        The real (validated) list arrives from the background scan; Start also
+        validates the chosen camera anyway."""
+        if self.camera_cb.count() == 0:
+            for i in range(4):
+                self.camera_cb.addItem(f"Camera {i}", i)
+
+    def _start_camera_scan(self) -> None:
+        """Probe cameras in a background thread (opening MSMF can block for
+        seconds on Windows — must not freeze the UI)."""
+        if self._scanning_cameras:
+            return
+        self._scanning_cameras = True
+        self._status("scanning cameras…")
+
+        def worker():
+            try:
+                cams = list_cameras()
+            except Exception:
+                cams = []
+            self._pending_cameras = cams  # applied by _tick on the UI thread
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_camera_scan(self, cams) -> None:
+        self._scanning_cameras = False
+        keep = self.camera_cb.currentData()
+        self.camera_cb.blockSignals(True)
+        self.camera_cb.clear()
+        if cams:
+            for idx, label in cams:
+                self.camera_cb.addItem(label, idx)
+        else:
+            for i in range(4):
+                self.camera_cb.addItem(f"Camera {i}", i)
+        self._select_data(self.camera_cb, keep if keep is not None else self.cfg.camera)
+        self.camera_cb.blockSignals(False)
+        self._status(f"found {len(cams)} camera(s)" if cams else
+                     "no cameras detected — pick an index and press Start")
+
+    def _populate_audio(self) -> None:
         try:
             outs = list_audio_outputs()
         except Exception as e:
@@ -339,6 +378,9 @@ class MainWindow(QtWidgets.QMainWindow):
     # ---- periodic UI update ----------------------------------------------
 
     def _tick(self) -> None:
+        if self._pending_cameras is not None:   # background scan finished
+            cams, self._pending_cameras = self._pending_cameras, None
+            self._apply_camera_scan(cams)
         if self._starting:
             return
         if getattr(self, "_start_error", None):
