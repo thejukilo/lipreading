@@ -59,7 +59,15 @@ python -m server.engine --video media\demo.mp4 --checkpoint checkpoints\vsr_trlr
 → [`docs/step1-smoke-test.md`](docs/step1-smoke-test.md)
 
 **Step 2–4 — live push-to-talk into Google Meet** (webcam → transcript → voice
-→ virtual mic). Needs VB-Cable installed; select **CABLE Output** as Meet's mic:
+→ virtual mic). Needs VB-Cable installed; select **CABLE Output** as Meet's mic.
+
+Desktop app (recommended — no terminal): **double-click `run.bat`**, or
+```powershell
+python -m server.gui_app           # pick devices, Start, hold to talk
+```
+→ [`docs/desktop-ui.md`](docs/desktop-ui.md)
+
+Terminal front-end (same engine):
 ```powershell
 python -m server.live_app          # hold RIGHT CTRL, mouth a sentence, review, speak
 ```

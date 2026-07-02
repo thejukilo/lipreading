@@ -32,3 +32,4 @@ sounddevice  # play synthesized audio into the VB-Cable virtual mic
 soundfile    # read WAV for playback
 piper-tts    # local neural TTS (default voice engine)
 pyttsx3      # Windows SAPI5 fallback voice (no model download)
+PySide6      # desktop setup UI (server.gui_app)
