@@ -31,6 +31,7 @@ pynput       # global push-to-talk hotkey (no admin needed)
 pygrabber; platform_system == "Windows"   # real webcam device names (like Meet)
 sounddevice  # play synthesized audio into the VB-Cable virtual mic
 soundfile    # read WAV for playback
+pyvirtualcam # mirror the webcam to a virtual camera so Meet can see you (needs OBS Studio installed)
 piper-tts    # local neural TTS (default voice engine)
 pyttsx3      # Windows SAPI5 fallback voice (no model download)
 PySide6      # desktop setup UI (server.gui_app)

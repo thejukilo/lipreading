@@ -91,14 +91,35 @@ a second participant confirms others hear it too.
 | `--list-audio-devices` | — | Print playback device names/indices and exit. |
 | `--device` | auto | `cuda:0` or `cpu`. |
 
-## Camera contention (if you're also on-camera in Meet)
+## Being on-camera in Meet at the same time (virtual camera)
 
-Windows often lets only one app own the webcam. If Meet already has the camera,
-this app can't open it (and vice-versa). Options:
-- Phase 1 simplest: stay **off-camera** in Meet while using the app.
-- Or install **OBS**, add your webcam as a source, start **Virtual Camera**, and
-  select "OBS Virtual Camera" in Meet — then point this app at your real webcam
-  (`--camera`). Both get a feed.
+Windows lets only one app own the webcam, so if this app has it, Meet can't —
+and vice-versa. The fix is the video twin of the VB-Cable audio trick: **the app
+owns the physical webcam and re-publishes every frame to a virtual camera** that
+Meet selects. One producer (us), one consumer (Meet), no contention.
+
+```
+video:  webcam ─► this app ─► "OBS Virtual Camera" ─► Meet shows you
+                     └─► lip-reading (same frames)
+```
+
+**Setup:**
+1. Install **OBS Studio** (≥ 26.1) — you don't have to *run* it; installing it
+   registers the "OBS Virtual Camera" device the app writes to. (Alternatively,
+   [Unity Capture](https://github.com/schellingb/UnityCapture).)
+2. `pip install pyvirtualcam` (already in `requirements.txt`).
+3. In the desktop app, tick **"Show my camera in Google Meet (virtual camera)"**
+   under the Camera selector, then **Start**. The status line shows which device
+   name to pick.
+4. In Meet: ⚙ Settings → **Video** → **Camera** → **OBS Virtual Camera**.
+
+Now Meet sees your webcam while the app reads your lips off the same feed. Make
+sure OBS itself isn't already running its virtual camera (only one producer is
+allowed). If it can't start, the app keeps working without it and shows why in
+the status line — you'd just be off-camera in Meet.
+
+> Off-camera is still the simplest option: leave the box unticked and turn your
+> camera off in Meet.
 
 ## Troubleshooting
 

@@ -33,6 +33,7 @@ class SessionConfig:
     camera: int = 0
     width: int = 640
     height: int = 480
+    virtual_cam: bool = False           # mirror the webcam to a virtual camera for Meet
     tts: str = "piper"                 # built-in engine (CLI --tts); see `voice`
     voice: str = "piper"               # selector: "piper" | "sapi" | "clone:<slug>"
     clone_engine: str = "voxcpm"       # cloned-voice engine: "voxcpm" | "xtts"
@@ -77,6 +78,8 @@ class LiveSession:
         self.corrector = None
         self.cap = None
         self.out_device = None
+        self.vcam = None
+        self._vcam_warned = False
 
         # Optional UI hooks (called from worker threads — marshal to UI yourself).
         self.on_status = None
@@ -197,6 +200,15 @@ class LiveSession:
         self._set_status(f"camera {self.cfg.camera} open ({backend})")
         self._open_event.set()
 
+        # Optional passthrough to a virtual camera so Google Meet can show the
+        # webcam while we own the physical device (see server/virtualcam.py).
+        cam_fps = int(cap.get(cv2.CAP_PROP_FPS) or 0) or 30
+        if self.cfg.virtual_cam:
+            from .virtualcam import VirtualCamera
+
+            self.vcam = VirtualCamera()
+            self._vcam_warned = False
+
         period = 1.0 / 25.0
         next_keep = time.monotonic()
         try:
@@ -206,6 +218,15 @@ class LiveSession:
                     time.sleep(0.005)
                     continue
                 self.latest_bgr = frame
+                if self.vcam is not None:
+                    self.vcam.send_bgr(frame, fps=cam_fps)
+                    if self.vcam.error and not self._vcam_warned:
+                        self._set_status(f"virtual camera off — {self.vcam.error}")
+                        self._vcam_warned = True
+                    elif self.vcam.active and not self._vcam_warned:
+                        self._set_status(f"virtual camera live → select "
+                                         f"'{self.vcam.device_name}' in Google Meet")
+                        self._vcam_warned = True
                 now = time.monotonic()
                 if now >= next_keep:
                     next_keep = max(next_keep + period, now - period)
@@ -214,6 +235,9 @@ class LiveSession:
                         with self._buf_lock:
                             self.utterance.append(rgb)
         finally:
+            if self.vcam is not None:
+                self.vcam.close()
+                self.vcam = None
             cap.release()
 
     @property

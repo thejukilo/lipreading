@@ -104,6 +104,11 @@ class MainWindow(QtWidgets.QMainWindow):
         setup = QtWidgets.QGroupBox("Setup")
         form = QtWidgets.QFormLayout(setup)
         self.camera_cb = QtWidgets.QComboBox()
+        self.vcam_chk = QtWidgets.QCheckBox("Show my camera in Google Meet (virtual camera)")
+        self.vcam_chk.setToolTip(
+            "Mirror the webcam to a virtual camera so Meet can see you while the app "
+            "reads your lips. Needs OBS Studio installed (provides 'OBS Virtual "
+            "Camera'); pick that as your camera in Meet.")
         self.recog_model_cb = QtWidgets.QComboBox()
         self.mic_cb = QtWidgets.QComboBox()
         self.monitor_chk = QtWidgets.QCheckBox("Hear it on my speakers (monitor)")
@@ -159,6 +164,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.refresh_btn = QtWidgets.QPushButton("Refresh devices")
 
         form.addRow("Camera:", self.camera_cb)
+        form.addRow("", self.vcam_chk)
         form.addRow("Recognition model:", self.recog_model_cb)
         form.addRow("Microphone to Meet:", self.mic_cb)
         form.addRow("", self.monitor_chk)
@@ -349,6 +355,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _apply_cfg_to_widgets(self) -> None:
         self._select_data(self.recog_model_cb, self.cfg.checkpoint)
         self._select_data(self.camera_cb, self.cfg.camera)
+        self.vcam_chk.setChecked(self.cfg.virtual_cam)
         if self.cfg.output_device is not None:
             self._select_text_contains(self.mic_cb, str(self.cfg.output_device))
         self.monitor_chk.setChecked(self.cfg.monitor_on)
@@ -368,6 +375,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _widgets_to_cfg(self) -> None:
         self.cfg.checkpoint = self.recog_model_cb.currentData() or BASE_CKPT
         self.cfg.camera = self.camera_cb.currentData() if self.camera_cb.currentData() is not None else 0
+        self.cfg.virtual_cam = self.vcam_chk.isChecked()
         self.cfg.output_device = self.mic_cb.currentData()
         self.cfg.monitor_on = self.monitor_chk.isChecked()
         self.cfg.monitor_device = self.monitor_cb.currentData()
