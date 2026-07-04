@@ -58,8 +58,9 @@ python -m server.phase3.train --epochs 40 --batch-size 4
 ```
 Loads the English checkpoint, keeps the visual encoder **frozen for the first few
 epochs** (decoder adapts to Dutch first), then unfreezes everything. Saves the
-best-by-val-loss model to `checkpoints\dutch\dutch_vsr.pth`. On Windows, if the
-data loader misbehaves, add `--num-workers 0`.
+best-by-val-loss model to `checkpoints\dutch\dutch_vsr.pth`. Data loading runs
+single-process on Windows automatically (`--num-workers 0`), because auto_avsr's
+transforms can't be pickled across Windows' spawned worker processes.
 
 **4. Evaluate — the honest number.**
 ```powershell

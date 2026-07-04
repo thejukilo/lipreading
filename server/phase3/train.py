@@ -149,7 +149,10 @@ def main(argv=None) -> int:
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--batch-size", type=int, default=4)
     ap.add_argument("--freeze-encoder-epochs", type=int, default=3)
-    ap.add_argument("--num-workers", type=int, default=4)
+    # Windows uses 'spawn', which pickles the dataset; auto_avsr's VideoTransform
+    # holds a lambda that can't be pickled -> default to single-process there.
+    ap.add_argument("--num-workers", type=int, default=(0 if os.name == "nt" else 4),
+                    help="DataLoader workers (default 0 on Windows, 4 elsewhere).")
     args = ap.parse_args(argv)
     train(args.manifest, args.base, out_path=args.out, auto_avsr_dir=args.auto_avsr_dir,
           device=args.device, epochs=args.epochs, lr=args.lr, batch_size=args.batch_size,
