@@ -78,10 +78,50 @@ def _run_epoch(model, loader, device, optim=None, scaler=None, amp_dtype=None,
     return total / max(steps, 1)
 
 
+def _read_video_25fps(path):
+    """Decode a raw webcam recording to (T,H,W,3) RGB, resampled to ~25 fps
+    (the model's rate). Any container OpenCV can read works."""
+    import cv2
+    import numpy as np
+
+    cap = cv2.VideoCapture(path)
+    if not cap.isOpened():
+        raise RuntimeError(f"could not open probe video: {path}")
+    src_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    frames = []
+    while True:
+        ok, f = cap.read()
+        if not ok:
+            break
+        frames.append(cv2.cvtColor(f, cv2.COLOR_BGR2RGB))
+    cap.release()
+    if not frames:
+        raise RuntimeError("probe video has no frames")
+    if abs(src_fps - 25.0) < 0.5:
+        return np.asarray(frames, dtype=np.uint8)
+    n_out = max(1, int(round(len(frames) * 25.0 / src_fps)))
+    idx = [min(len(frames) - 1, int(round(i * src_fps / 25.0))) for i in range(n_out)]
+    return np.asarray([frames[i] for i in idx], dtype=np.uint8)
+
+
+def _prepare_probe(engine, path, msg):
+    """Crop the probe video to 96x96 mouth ROIs once (deterministic); we re-decode
+    it through the changing model each probe."""
+    if engine.landmarks_detector is None:
+        raise RuntimeError("probe needs the face detector")
+    frames = _read_video_25fps(path)
+    landmarks = engine.landmarks_detector(frames)
+    crop = engine.video_process(frames, landmarks)
+    if crop is None:
+        raise RuntimeError("no face/mouth detected — face the camera, good light")
+    msg(f"probe ready: {os.path.basename(path)} ({len(frames)} frames @25fps)")
+    return crop
+
+
 def train(manifest_path, base_ckpt, out_path="checkpoints/dutch/dutch_vsr.pth",
           auto_avsr_dir=None, detector="mediapipe", device=None,
           epochs=20, lr=1e-4, batch_size=4, freeze_encoder_epochs=3,
-          num_workers=4, amp=True, on_progress=None):
+          num_workers=4, amp=True, probe_video=None, probe_every=2, on_progress=None):
     import torch
 
     from ..engine import LipreadingEngine
@@ -104,8 +144,11 @@ def train(manifest_path, base_ckpt, out_path="checkpoints/dutch/dutch_vsr.pth",
         raise RuntimeError("No training clips in manifest.")
     msg(f"train {len(train_rows)} clips | val {len(val_rows)} clips | device {device}")
 
+    # The detector is only needed to crop a raw probe video (training clips are
+    # already cropped), so only load mediapipe when a probe is requested.
     engine = LipreadingEngine(checkpoint_path=base_ckpt, auto_avsr_dir=auto_avsr_dir,
-                              detector=detector, device=device, load_detector=False)
+                              detector=detector, device=device,
+                              load_detector=bool(probe_video))
     from datamodule.transforms import TextTransform, VideoTransform
 
     tt = TextTransform()
@@ -133,6 +176,30 @@ def train(manifest_path, base_ckpt, out_path="checkpoints/dutch/dutch_vsr.pth",
             amp_dtype = torch.float16
             scaler = torch.cuda.amp.GradScaler()
             msg("mixed precision: fp16")
+
+    # Optional "eyeball" probe: decode a clip of your own face every few epochs
+    # so you can watch it start reading your lips (a realistic live-app preview).
+    probe = None
+    if probe_video:
+        try:
+            probe = _prepare_probe(engine, probe_video, msg)
+        except Exception as e:
+            msg(f"probe disabled: {e}")
+
+    def run_probe(tag):
+        if probe is None:
+            return
+        was_training = model.training
+        model.eval()
+        try:
+            text = engine.transcribe_prepared_frames(probe)
+            msg(f"👄 probe [{tag}]: “{text}”")
+        except Exception as e:
+            msg(f"probe failed: {e}")
+        finally:
+            model.train(was_training)
+
+    run_probe("epoch 0 / untrained")
 
     out_path = os.path.abspath(out_path)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -164,6 +231,9 @@ def train(manifest_path, base_ckpt, out_path="checkpoints/dutch/dutch_vsr.pth",
             torch.save(model.state_dict(), out_path)
         msg(line + f"  [{dt:.0f}s]")
 
+        if probe is not None and (epoch % probe_every == 0 or epoch == epochs):
+            run_probe(f"epoch {epoch}")
+
     if val_loader is None:
         msg(f"saved final model: {out_path}")
     else:
@@ -187,6 +257,11 @@ def main(argv=None) -> int:
                     help="Mixed precision (default on; big speed/memory win on GPU).")
     ap.add_argument("--no-amp", dest="amp", action="store_false",
                     help="Disable mixed precision (use if you see NaN losses).")
+    ap.add_argument("--probe-video", default=None,
+                    help="A short webcam clip of you saying a Dutch sentence; it's "
+                         "decoded every few epochs so you can watch it learn your lips.")
+    ap.add_argument("--probe-every", type=int, default=2,
+                    help="Run the probe every N epochs (default 2).")
     # Windows uses 'spawn', which pickles the dataset; auto_avsr's VideoTransform
     # holds a lambda that can't be pickled -> default to single-process there.
     ap.add_argument("--num-workers", type=int, default=(0 if os.name == "nt" else 4),
@@ -195,7 +270,7 @@ def main(argv=None) -> int:
     train(args.manifest, args.base, out_path=args.out, auto_avsr_dir=args.auto_avsr_dir,
           device=args.device, epochs=args.epochs, lr=args.lr, batch_size=args.batch_size,
           freeze_encoder_epochs=args.freeze_encoder_epochs, num_workers=args.num_workers,
-          amp=args.amp)
+          amp=args.amp, probe_video=args.probe_video, probe_every=args.probe_every)
     return 0
 
 

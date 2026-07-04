@@ -62,6 +62,24 @@ best-by-val-loss model to `checkpoints\dutch\dutch_vsr.pth`. Data loading runs
 single-process on Windows automatically (`--num-workers 0`), because auto_avsr's
 transforms can't be pickled across Windows' spawned worker processes.
 
+### Watch it learn *your* lips (optional probe)
+
+Record a short webcam clip of yourself saying a Dutch sentence (phone or webcam,
+face the camera, good light, ~2–5 s) and pass it with `--probe-video`:
+```powershell
+python -m server.phase3.train --epochs 20 --probe-video me_dutch.mp4 --probe-every 2
+```
+Every couple of epochs it decodes that clip through the current model and prints
+what it "hears":
+```
+[train] 👄 probe [epoch 0 / untrained]: "these people can see the"   <- English nonsense
+[train] 👄 probe [epoch 6]: "de mensen kunnen ..."                    <- Dutch emerging
+```
+It's the most satisfying progress signal — you literally watch it start reading
+your mouth. Note this is your *raw* webcam through the mediapipe mouth-crop, so
+it doubles as a realistic preview of live-app behaviour (and may read a little
+worse than the test-split number if your crop differs from the dataset's).
+
 **4. Evaluate — the honest number.**
 ```powershell
 python -m server.phase3.evaluate --checkpoint checkpoints\dutch\dutch_vsr.pth
