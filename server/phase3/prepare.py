@@ -16,16 +16,24 @@ import argparse
 import hashlib
 import json
 import os
-import re
-
-_UUID_PREFIX = re.compile(r"^[0-9a-fA-F]{8}-")
 
 
-def video_id_of(stem: str) -> str:
-    """Source-video id = the token before the first '_' (a stray upload-hash
-    prefix like 'a3f6a488-' is stripped first)."""
-    stem = _UUID_PREFIX.sub("", stem)
-    return stem.split("_", 1)[0] or stem
+def video_id_of(mp4_path: str, data_dir: str) -> str:
+    """Source-video id used to group clips into a split (no speaker leakage).
+
+    Clips live in a per-source subfolder named ``<youtubeid>_<hash>`` (e.g.
+    ``Zoa4rUCiD2s_4636b13692e1``), each containing many scene/track clips. We
+    group by the **YouTube id** — the folder-name token before the first ``_`` —
+    so *every* clip of a source video (all scenes, all face-tracks, even if the
+    same video was processed into more than one hash-folder) lands in one split.
+    Falls back to the file stem when clips sit directly in ``data_dir``.
+    """
+    parent = os.path.dirname(mp4_path)
+    if os.path.abspath(parent) != os.path.abspath(data_dir):
+        key = os.path.basename(parent)          # per-video subfolder name
+    else:
+        key = os.path.splitext(os.path.basename(mp4_path))[0]
+    return key.split("_", 1)[0] or key
 
 
 def _bucket(video_id: str, seed: int) -> float:
@@ -80,7 +88,7 @@ def build_manifest(data_dir: str, val_frac: float = 0.08, test_frac: float = 0.1
             continue
         entries.append({
             "clip": os.path.relpath(mp4, data_dir),
-            "video_id": video_id_of(stem),
+            "video_id": video_id_of(mp4, data_dir),
             "frames": frames, "fps": round(fps, 3),
             "transcript": transcript,
         })
