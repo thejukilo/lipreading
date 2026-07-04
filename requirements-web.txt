@@ -1,0 +1,17 @@
+# Mobile web API (server/web_api.py) — lets phones lipread with their own camera.
+#
+#   pip install -r requirements-web.txt
+#
+# Run:  python -m server.web_api --preload
+# Then expose it over HTTPS with a tunnel so phones can reach it (camera access
+# in the browser requires a secure context):
+#
+#   cloudflared tunnel --url http://localhost:8000     # Cloudflare (no account)
+#   # or:  ngrok http 8000
+#
+# Open the tunnel's https URL on the phone WITH the ?k=<token> the server prints.
+
+fastapi
+uvicorn[standard]
+python-multipart      # multipart/form-data parsing for the uploaded frames
+# (opencv-python, numpy, soundfile come from the base requirements.txt)

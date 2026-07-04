@@ -92,3 +92,12 @@ pip install -r requirements-llm.txt
 words (names, jargon) to later fine-tune a **Personalized** model. In the app:
 the **Teach** tab, or **＋ Add to training** when you fix a wrong transcript.
 → [`docs/teaching.md`](docs/teaching.md)
+
+**Mobile web app** — lipread from a phone browser with the phone's camera; the
+PC runs the model, the phone plays the voice. Optional install, then expose it
+over an HTTPS tunnel:
+```powershell
+pip install -r requirements-web.txt
+python -m server.web_api --preload        # or double-click run_web.bat
+```
+→ [`docs/web-mobile.md`](docs/web-mobile.md)

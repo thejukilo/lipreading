@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Lipreading</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; font-family: -apple-system, system-ui, Segoe UI, Roboto, sans-serif;
+    background: #0d0f14; color: #e8ecf2; height: 100dvh; display: flex; flex-direction: column;
+  }
+  header { padding: 12px 16px; font-weight: 600; font-size: 15px; border-bottom: 1px solid #232833; }
+  header small { font-weight: 400; color: #8a93a3; }
+  .stage { position: relative; flex: 1; min-height: 0; background: #000; }
+  video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+  #frameOverlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  #frameOverlay div {
+    width: 46%; aspect-ratio: 3/4; border: 2px dashed rgba(255,255,255,.35); border-radius: 16px;
+  }
+  .panel { padding: 14px 16px 22px; background: #12151c; border-top: 1px solid #232833; }
+  #status { font-size: 13px; color: #8a93a3; min-height: 18px; margin-bottom: 8px; }
+  #status.err { color: #ff8a8a; }
+  #transcript {
+    font-size: 19px; line-height: 1.35; min-height: 52px; margin-bottom: 14px;
+    padding: 10px 12px; background: #0d0f14; border: 1px solid #232833; border-radius: 12px;
+    word-break: break-word;
+  }
+  #talk {
+    width: 100%; border: none; border-radius: 999px; padding: 20px; font-size: 19px; font-weight: 700;
+    color: #06210f; background: #37d67a; touch-action: none; user-select: none;
+    transition: transform .05s ease, background .1s ease;
+  }
+  #talk:disabled { background: #33404a; color: #7c8794; }
+  #talk.rec { background: #ff5470; color: #2a0710; transform: scale(.99); }
+  .row { display: flex; gap: 14px; align-items: center; margin-top: 12px; font-size: 13px; color: #a7b0be; }
+  .row label { display: flex; align-items: center; gap: 6px; }
+  #replay { margin-left: auto; background: none; border: 1px solid #33404a; color: #a7b0be;
+            border-radius: 8px; padding: 6px 12px; font-size: 13px; }
+  .fatal { padding: 24px; line-height: 1.5; }
+  .fatal code { background: #232833; padding: 2px 6px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<header>Lipreading <small>— hold, mouth a sentence, release</small></header>
+<div class="stage">
+  <video id="cam" playsinline autoplay muted></video>
+  <div id="frameOverlay"><div></div></div>
+</div>
+<div class="panel">
+  <div id="status">starting camera…</div>
+  <div id="transcript">—</div>
+  <button id="talk" disabled>Hold to talk</button>
+  <div class="row">
+    <label><input type="checkbox" id="cleanup" checked /> Clean up text</label>
+    <label><input type="checkbox" id="speak" checked /> Speak</label>
+    <button id="replay" hidden>▶ Replay</button>
+  </div>
+</div>
+<audio id="player" playsinline></audio>
+
+<script>
+const FPS = 25;
+const qs = new URLSearchParams(location.search);
+const TOKEN = qs.get("k") || qs.get("token") || "";
+
+const els = {
+  status: document.getElementById("status"),
+  transcript: document.getElementById("transcript"),
+  talk: document.getElementById("talk"),
+  cleanup: document.getElementById("cleanup"),
+  speak: document.getElementById("speak"),
+  replay: document.getElementById("replay"),
+  video: document.getElementById("cam"),
+  player: document.getElementById("player"),
+};
+
+function status(msg, isErr) {
+  els.status.textContent = msg;
+  els.status.classList.toggle("err", !!isErr);
+}
+function fatal(html) {
+  document.body.innerHTML = '<div class="fatal">' + html + '</div>';
+}
+
+if (!TOKEN) {
+  fatal("Missing access token. Open the link with <code>?k=YOUR_TOKEN</code> — " +
+        "the server prints the full URL when it starts.");
+}
+
+// ---- camera ----------------------------------------------------------------
+let stream = null;
+const canvas = document.createElement("canvas");
+const ctx = canvas.getContext("2d");
+
+async function initCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    return fatal("This browser can't access the camera. Camera access also " +
+                 "requires <b>HTTPS</b> — open the tunnel's https:// link, not http://.");
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false,
+    });
+    els.video.srcObject = stream;
+    await els.video.play();
+    els.talk.disabled = false;
+    status("ready — hold the button and mouth a sentence");
+  } catch (e) {
+    fatal("Camera permission denied or unavailable (" + e.message + "). " +
+          "Allow camera access and make sure you opened the <b>https://</b> link.");
+  }
+}
+
+// ---- push-to-talk capture --------------------------------------------------
+let recording = false, frames = [], timer = null;
+
+function grabFrame() {
+  const w = els.video.videoWidth, h = els.video.videoHeight;
+  if (!w || !h) return;
+  const scale = Math.min(1, 480 / Math.max(w, h));
+  canvas.width = Math.round(w * scale);
+  canvas.height = Math.round(h * scale);
+  // Draw un-mirrored (the on-screen preview is mirrored via CSS only).
+  ctx.drawImage(els.video, 0, 0, canvas.width, canvas.height);
+  canvas.toBlob(b => { if (b) frames.push(b); }, "image/jpeg", 0.6);
+}
+
+function startRec() {
+  if (recording || els.talk.disabled) return;
+  recording = true; frames = [];
+  els.talk.classList.add("rec"); els.talk.textContent = "Recording… release to send";
+  els.replay.hidden = true;
+  status("recording…");
+  grabFrame();
+  timer = setInterval(grabFrame, 1000 / FPS);
+}
+
+async function stopRec() {
+  if (!recording) return;
+  recording = false;
+  clearInterval(timer); timer = null;
+  els.talk.classList.remove("rec"); els.talk.textContent = "Hold to talk";
+  // let the last toBlob calls resolve
+  await new Promise(r => setTimeout(r, 120));
+  if (frames.length < 8) { status("too short — hold a bit longer", true); return; }
+  await send(frames.slice());
+}
+
+// ---- upload ----------------------------------------------------------------
+async function send(blobs) {
+  els.talk.disabled = true;
+  status(`thinking… (${blobs.length} frames)`);
+  const fd = new FormData();
+  blobs.forEach((b, i) => fd.append("frames", b, `f${i}.jpg`));
+  fd.append("fps", String(FPS));
+  fd.append("speak", els.speak.checked ? "true" : "false");
+  fd.append("cleanup", els.cleanup.checked ? "true" : "false");
+  try {
+    const res = await fetch("/api/utter", {
+      method: "POST", headers: { "X-Access-Token": TOKEN }, body: fd,
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      status("error: " + t.slice(0, 160), true);
+      return;
+    }
+    const data = await res.json();
+    els.transcript.textContent = data.text || "—";
+    if (data.message) status(data.message, !data.text);
+    else status(`done — ${data.frames} frames`);
+    if (data.audio) playAudio(data.audio, data.audio_mime || "audio/wav");
+    else els.replay.hidden = true;
+  } catch (e) {
+    status("network error: " + e.message, true);
+  } finally {
+    els.talk.disabled = false;
+  }
+}
+
+// ---- playback --------------------------------------------------------------
+let lastUrl = null;
+function playAudio(b64, mime) {
+  if (lastUrl) URL.revokeObjectURL(lastUrl);
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  lastUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  els.player.src = lastUrl;
+  els.player.play().catch(() => status("tap ▶ Replay to hear it"));
+  els.replay.hidden = false;
+}
+els.replay.addEventListener("click", () => els.player.play());
+
+// ---- wire up ---------------------------------------------------------------
+els.talk.addEventListener("pointerdown", e => { e.preventDefault(); startRec(); });
+els.talk.addEventListener("pointerup", e => { e.preventDefault(); stopRec(); });
+els.talk.addEventListener("pointercancel", () => stopRec());
+els.talk.addEventListener("pointerleave", () => { if (recording) stopRec(); });
+
+if (TOKEN) initCamera();
+</script>
+</body>
+</html>
