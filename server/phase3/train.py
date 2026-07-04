@@ -121,7 +121,8 @@ def _prepare_probe(engine, path, msg):
 def train(manifest_path, base_ckpt, out_path="checkpoints/dutch/dutch_vsr.pth",
           auto_avsr_dir=None, detector="mediapipe", device=None,
           epochs=20, lr=1e-4, batch_size=4, freeze_encoder_epochs=3,
-          num_workers=4, amp=True, probe_video=None, probe_every=2, on_progress=None):
+          num_workers=4, amp=True, patience=4, probe_video=None, probe_every=2,
+          on_progress=None):
     import torch
 
     from ..engine import LipreadingEngine
@@ -204,6 +205,8 @@ def train(manifest_path, base_ckpt, out_path="checkpoints/dutch/dutch_vsr.pth",
     out_path = os.path.abspath(out_path)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     best_val = float("inf")
+    best_epoch = 0
+    no_improve = 0
     encoder_frozen = None
     for epoch in range(1, epochs + 1):
         want_frozen = epoch <= freeze_encoder_epochs
@@ -217,27 +220,38 @@ def train(manifest_path, base_ckpt, out_path="checkpoints/dutch/dutch_vsr.pth",
                         msg=msg, tag=f"e{epoch} ")
         dt = time.perf_counter() - t0
         line = f"epoch {epoch}/{epochs} — train {tr:.3f}"
+        stop = False
         if val_loader is not None:
             vl = _run_epoch(model, val_loader, device, None, None, amp_dtype)
             line += f" | val {vl:.3f}"
-            improved = vl < best_val
-            if improved:
-                best_val = vl
+            if vl < best_val - 1e-4:
+                best_val, best_epoch, no_improve = vl, epoch, 0
                 model.eval()
                 torch.save(model.state_dict(), out_path)
                 line += "  ✓ saved (best)"
+            else:
+                no_improve += 1
+                # Only start the early-stop clock once the encoder is unfrozen —
+                # the frozen warmup epochs shouldn't count toward patience.
+                if patience and epoch > freeze_encoder_epochs and no_improve >= patience:
+                    stop = True
         else:
             model.eval()
             torch.save(model.state_dict(), out_path)
         msg(line + f"  [{dt:.0f}s]")
 
-        if probe is not None and (epoch % probe_every == 0 or epoch == epochs):
+        if probe is not None and (epoch % probe_every == 0 or epoch == epochs or stop):
             run_probe(f"epoch {epoch}")
+
+        if stop:
+            msg(f"early stop — val hasn't improved for {patience} epochs "
+                f"(best {best_val:.3f} at epoch {best_epoch})")
+            break
 
     if val_loader is None:
         msg(f"saved final model: {out_path}")
     else:
-        msg(f"best val loss {best_val:.3f} — saved {out_path}")
+        msg(f"best val {best_val:.3f} at epoch {best_epoch} — saved {out_path}")
     return out_path
 
 
@@ -253,6 +267,9 @@ def main(argv=None) -> int:
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--batch-size", type=int, default=4)
     ap.add_argument("--freeze-encoder-epochs", type=int, default=3)
+    ap.add_argument("--patience", type=int, default=4,
+                    help="Early-stop after N epochs with no val improvement "
+                         "(0 disables; the clock starts only after unfreeze).")
     ap.add_argument("--amp", dest="amp", action="store_true", default=True,
                     help="Mixed precision (default on; big speed/memory win on GPU).")
     ap.add_argument("--no-amp", dest="amp", action="store_false",
@@ -270,7 +287,8 @@ def main(argv=None) -> int:
     train(args.manifest, args.base, out_path=args.out, auto_avsr_dir=args.auto_avsr_dir,
           device=args.device, epochs=args.epochs, lr=args.lr, batch_size=args.batch_size,
           freeze_encoder_epochs=args.freeze_encoder_epochs, num_workers=args.num_workers,
-          amp=args.amp, probe_video=args.probe_video, probe_every=args.probe_every)
+          amp=args.amp, patience=args.patience, probe_video=args.probe_video,
+          probe_every=args.probe_every)
     return 0
 
 
