@@ -33,35 +33,55 @@ def _set_encoder_frozen(model, frozen: bool) -> int:
     return n
 
 
-def _run_epoch(model, loader, device, optim=None):
+def _run_epoch(model, loader, device, optim=None, scaler=None, amp_dtype=None,
+               msg=None, tag=""):
+    import time as _time
+
     import torch
 
     train = optim is not None
     model.train(train)
     total, steps = 0.0, 0
+    n_batches = len(loader)
+    amp = amp_dtype is not None
+    dev_type = "cuda" if "cuda" in str(device) else "cpu"
     ctx = torch.enable_grad() if train else torch.no_grad()
+    t0 = _time.perf_counter()
     with ctx:
-        for batch in loader:
+        for bi, batch in enumerate(loader, 1):
             if batch is None:
                 continue
             inputs = batch["inputs"].to(device)
             input_lengths = batch["input_lengths"].to(device)
             targets = batch["targets"].to(device)
-            loss = model(inputs, input_lengths, targets)[0]
+            with torch.autocast(device_type=dev_type, dtype=amp_dtype, enabled=amp):
+                loss = model(inputs, input_lengths, targets)[0]
             if train:
-                optim.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                optim.step()
+                optim.zero_grad(set_to_none=True)
+                if scaler is not None and scaler.is_enabled():
+                    scaler.scale(loss).backward()
+                    scaler.unscale_(optim)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                    scaler.step(optim)
+                    scaler.update()
+                else:
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                    optim.step()
             total += float(loss.detach())
             steps += 1
+            if train and msg and bi % 200 == 0:
+                el = _time.perf_counter() - t0
+                eta = el / bi * (n_batches - bi)
+                msg(f"  {tag}{bi}/{n_batches} — loss {total / steps:.1f} "
+                    f"| {el / 60:.0f}m in, ~{eta / 60:.0f}m left")
     return total / max(steps, 1)
 
 
 def train(manifest_path, base_ckpt, out_path="checkpoints/dutch/dutch_vsr.pth",
           auto_avsr_dir=None, detector="mediapipe", device=None,
-          epochs=40, lr=1e-4, batch_size=4, freeze_encoder_epochs=3,
-          num_workers=4, on_progress=None):
+          epochs=20, lr=1e-4, batch_size=4, freeze_encoder_epochs=3,
+          num_workers=4, amp=True, on_progress=None):
     import torch
 
     from ..engine import LipreadingEngine
@@ -101,6 +121,19 @@ def train(manifest_path, base_ckpt, out_path="checkpoints/dutch/dutch_vsr.pth",
     model = engine.modelmodule.model
     optim = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
 
+    # Mixed precision: bf16 where the GPU supports it (stable, no loss scaler),
+    # else fp16 with a GradScaler. Roughly halves memory and speeds the math —
+    # the big lever once the encoder is unfrozen.
+    amp_dtype, scaler = None, None
+    if amp and "cuda" in str(device):
+        if torch.cuda.is_bf16_supported():
+            amp_dtype = torch.bfloat16
+            msg("mixed precision: bf16")
+        else:
+            amp_dtype = torch.float16
+            scaler = torch.cuda.amp.GradScaler()
+            msg("mixed precision: fp16")
+
     out_path = os.path.abspath(out_path)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     best_val = float("inf")
@@ -113,11 +146,12 @@ def train(manifest_path, base_ckpt, out_path="checkpoints/dutch/dutch_vsr.pth",
             encoder_frozen = want_frozen
 
         t0 = time.perf_counter()
-        tr = _run_epoch(model, train_loader, device, optim)
+        tr = _run_epoch(model, train_loader, device, optim, scaler, amp_dtype,
+                        msg=msg, tag=f"e{epoch} ")
         dt = time.perf_counter() - t0
         line = f"epoch {epoch}/{epochs} — train {tr:.3f}"
         if val_loader is not None:
-            vl = _run_epoch(model, val_loader, device, None)
+            vl = _run_epoch(model, val_loader, device, None, None, amp_dtype)
             line += f" | val {vl:.3f}"
             improved = vl < best_val
             if improved:
@@ -145,10 +179,14 @@ def main(argv=None) -> int:
     ap.add_argument("--out", default="checkpoints/dutch/dutch_vsr.pth")
     ap.add_argument("--auto-avsr-dir", default=None)
     ap.add_argument("--device", default=None)
-    ap.add_argument("--epochs", type=int, default=40)
+    ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--batch-size", type=int, default=4)
     ap.add_argument("--freeze-encoder-epochs", type=int, default=3)
+    ap.add_argument("--amp", dest="amp", action="store_true", default=True,
+                    help="Mixed precision (default on; big speed/memory win on GPU).")
+    ap.add_argument("--no-amp", dest="amp", action="store_false",
+                    help="Disable mixed precision (use if you see NaN losses).")
     # Windows uses 'spawn', which pickles the dataset; auto_avsr's VideoTransform
     # holds a lambda that can't be pickled -> default to single-process there.
     ap.add_argument("--num-workers", type=int, default=(0 if os.name == "nt" else 4),
@@ -156,7 +194,8 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     train(args.manifest, args.base, out_path=args.out, auto_avsr_dir=args.auto_avsr_dir,
           device=args.device, epochs=args.epochs, lr=args.lr, batch_size=args.batch_size,
-          freeze_encoder_epochs=args.freeze_encoder_epochs, num_workers=args.num_workers)
+          freeze_encoder_epochs=args.freeze_encoder_epochs, num_workers=args.num_workers,
+          amp=args.amp)
     return 0
 
 

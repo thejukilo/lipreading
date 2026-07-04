@@ -91,6 +91,13 @@ pilot's eval avoids this — it uses your already-cropped clips directly.
 
 ## Compute
 
-13.5 h ≈ 1.2 M frames. On a single modern CUDA GPU, an epoch is minutes and a
-40-epoch run is a few hours — not days. Start with a short run (`--epochs 5`) to
-confirm the loss drops, then do the full run.
+13.5 h ≈ 1.2 M frames. Epoch time is very different before vs after the encoder
+unfreezes: with the encoder **frozen** (epochs 1–3) an epoch is ~8 min; once
+**unfrozen** the whole network trains and an epoch is much longer. **Mixed
+precision is on by default** (`--amp`, bf16/fp16) to roughly halve memory and
+speed the unfrozen epochs. During a long epoch you'll see intra-epoch progress
+(`eN 200/1097 — loss … ~Nm left`) so it never looks frozen.
+
+Default is `--epochs 20`, which is plenty for a pilot — the best-by-val
+checkpoint is kept, so extra epochs never hurt quality, only time. If VRAM is
+tight, drop `--batch-size` to 2. If you see NaN losses, add `--no-amp`.
