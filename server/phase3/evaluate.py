@@ -24,7 +24,7 @@ def evaluate(manifest_path, checkpoint, auto_avsr_dir=None, detector="mediapipe"
     from ..engine import LipreadingEngine
 
     def msg(s):
-        print(f"[eval] {s}")
+        print(f"[eval] {s}", flush=True)  # flush so progress shows live on Windows
         if on_progress:
             on_progress(s)
 
@@ -36,11 +36,12 @@ def evaluate(manifest_path, checkpoint, auto_avsr_dir=None, detector="mediapipe"
         rows = rows[:limit]
     if not rows:
         raise RuntimeError(f"No clips in split '{split}'.")
-    msg(f"decoding {len(rows)} '{split}' clips on the trained model…")
-
+    msg(f"loading model from {os.path.basename(checkpoint)} …")
     engine = LipreadingEngine(checkpoint_path=checkpoint, auto_avsr_dir=auto_avsr_dir,
                               detector=detector, device=device or _auto_device(),
                               load_detector=False)
+    msg(f"model on {engine.device} — decoding {len(rows)} '{split}' clips "
+        "(first few shown so you can see it's alive)…")
 
     pairs, samples = [], []
     for i, e in enumerate(rows):
@@ -54,7 +55,12 @@ def evaluate(manifest_path, checkpoint, auto_avsr_dir=None, detector="mediapipe"
         pairs.append((ref, hyp))
         if len(samples) < 40:
             samples.append({"clip": e["clip"], "ref": ref, "hyp": hyp})
-        if (i + 1) % 50 == 0:
+        # Live feedback: show the first 3 decodes immediately, then a running
+        # counter every 10 clips (so it never looks frozen).
+        if i < 3:
+            msg(f"  [{i + 1}] ref: {ref[:60]}")
+            msg(f"      hyp: {hyp[:60]}")
+        elif (i + 1) % 10 == 0:
             msg(f"  {i + 1}/{len(rows)} — running WER {corpus_wer(pairs)['wer']:.1%}")
 
     result = corpus_wer(pairs)
