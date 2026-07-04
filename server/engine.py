@@ -94,6 +94,7 @@ class LipreadingEngine:
         auto_avsr_dir: str | None = None,
         detector: str = "mediapipe",
         device: str = "cuda:0",
+        load_detector: bool = True,
     ) -> None:
         auto_avsr_dir = auto_avsr_dir or os.environ.get("AUTO_AVSR_DIR", "third_party/auto_avsr")
         _ensure_auto_avsr_on_path(auto_avsr_dir)
@@ -110,9 +111,9 @@ class LipreadingEngine:
         import torch  # noqa: F401  (kept local so import errors are actionable)
 
         self._torch = torch
-        self._build(detector, device)
+        self._build(detector, device, load_detector)
 
-    def _build(self, detector: str, device: str) -> None:
+    def _build(self, detector: str, device: str, load_detector: bool = True) -> None:
         import torch
         from datamodule.transforms import VideoTransform
         from lightning import ModelModule
@@ -122,7 +123,13 @@ class LipreadingEngine:
         # enough for inference against the base checkpoint.
         args = argparse.Namespace(modality="video")
 
-        if detector == "mediapipe":
+        # Pre-cropped datasets (Phase-3 clips) go through transcribe_prepared_frames
+        # and never need the face detector, so skip building mediapipe entirely —
+        # avoids its CPU/TFLite init banner and a little startup time.
+        if not load_detector:
+            self.landmarks_detector = None
+            self.video_process = None
+        elif detector == "mediapipe":
             # auto_avsr's own mediapipe detector uses the legacy
             # `mp.solutions` API, which Google removed in mediapipe >= ~0.10.18.
             # We substitute a Tasks-API detector with an identical output

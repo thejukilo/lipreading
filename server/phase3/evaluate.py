@@ -39,7 +39,8 @@ def evaluate(manifest_path, checkpoint, auto_avsr_dir=None, detector="mediapipe"
     msg(f"decoding {len(rows)} '{split}' clips on the trained model…")
 
     engine = LipreadingEngine(checkpoint_path=checkpoint, auto_avsr_dir=auto_avsr_dir,
-                              detector=detector, device=device or _auto_device())
+                              detector=detector, device=device or _auto_device(),
+                              load_detector=False)
 
     pairs, samples = [], []
     for i, e in enumerate(rows):

@@ -85,7 +85,7 @@ def train(manifest_path, base_ckpt, out_path="checkpoints/dutch/dutch_vsr.pth",
     msg(f"train {len(train_rows)} clips | val {len(val_rows)} clips | device {device}")
 
     engine = LipreadingEngine(checkpoint_path=base_ckpt, auto_avsr_dir=auto_avsr_dir,
-                              detector=detector, device=device)
+                              detector=detector, device=device, load_detector=False)
     from datamodule.transforms import TextTransform, VideoTransform
 
     tt = TextTransform()
