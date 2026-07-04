@@ -193,9 +193,29 @@ class LipreadingEngine:
         video = self.video_process(frames, landmarks)  # cropped mouth ROI
         if video is None:
             raise RuntimeError("Mouth crop failed (no usable landmarks).")
-        video = torch.tensor(video).permute(0, 3, 1, 2)  # T,C,H,W
-        video = self.video_transform(video).to(self.device)
+        return self._decode_cropped(video)
 
+    def transcribe_prepared_frames(self, frames) -> str:
+        """Transcribe frames that are **already mouth-cropped** to 96x96.
+
+        For datasets that ship in the model's native format (e.g. the Phase-3
+        Dutch clips: 96x96, 25 fps, pre-cropped). Skips landmark detection and
+        VideoProcess entirely — the frames go straight into the transform.
+        ``frames``: ``(T, 96, 96, 3)`` uint8 RGB.
+        """
+        import numpy as np
+
+        frames = np.ascontiguousarray(frames)
+        if frames.ndim != 4 or frames.shape[-1] != 3:
+            raise ValueError(f"Expected (T,96,96,3) RGB uint8, got {frames.shape}.")
+        return self._decode_cropped(frames)
+
+    def _decode_cropped(self, video_thwc) -> str:
+        """Shared tail: a cropped (T,H,W,3) ROI -> transform -> model -> text."""
+        import torch
+
+        video = torch.tensor(video_thwc).permute(0, 3, 1, 2)  # T,C,H,W
+        video = self.video_transform(video).to(self.device)
         with torch.no_grad():
             transcript = self.modelmodule(video)
         return normalize_transcript(transcript)

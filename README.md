@@ -28,7 +28,7 @@ everything around it:
 |-------|------|--------|
 | **1** | English pretrained model + app + Chrome extension. Push-to-talk lipreading → prebuilt TTS voice → virtual mic → Google Meet. | In definition |
 | **2** | Still English. In-app wizard to **clone the user's own voice** (record or upload) and speak in it (XTTS v2). | In progress |
-| **3** | Custom **Dutch** VSR model. Parked pending Dutch data collection. | Parked |
+| **3** | Custom **Dutch** VSR model — fine-tune the English model on Dutch clips. Pilot pipeline ready ([`docs/phase3-dutch.md`](docs/phase3-dutch.md)). | Pilot |
 
 ## Phase 1 decisions (locked)
 
