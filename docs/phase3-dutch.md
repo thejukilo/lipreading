@@ -5,6 +5,32 @@ Goal: find out, with a hard number, what your **13.5 h of pre-cropped Dutch clip
 model. This is a self-contained train/eval pipeline, separate from the Phase-1
 live app.
 
+## Pilot result (first run)
+
+Trained on 236 videos / 4,388 clips (10.7 h) with the frozen-warmup → unfreeze
+schedule and bf16. Best model at **epoch 9** (val loss 79.5; it overfit after —
+train loss kept falling while val rose, hence early stopping was added).
+
+**Held-out test (32 unseen speaker-videos, 626 clips):**
+
+| metric | value | reading |
+|--------|-------|---------|
+| **WER** | **66.7 %** | 1 in 3 words exactly right |
+| **CER** | **38.8 %** | ~61 % of characters right — the truer gauge |
+
+The WER↔CER gap means most errors are *near-misses* (a diacritic, a letter, a
+homophene) rather than wild misses — exactly what the LLM cleanup layer repairs.
+Example (unseen speaker): ref *"…daarom is het belangrijk dat zij die
+flexibiliteit ook doortrekken"* → hyp *"Daarom is het belangrijk dat ik die
+flexibiliteit ook doordel…"* — ~9 correct words in a row. It genuinely reads
+Dutch lips. Some of the remaining WER is Plan-A tokenizer damage (`<unk>` on
+Dutch diacritics, uppercase leakage) that Plan B removes for free.
+
+**Takeaway:** validated recipe; data is the dominant lever from here (the
+overfit signature = data-limited). Rough scaling: ~50 h → ~55–60 % WER, ~150 h →
+~45–50 %. A speaker-dependent model (record yourself) reaches usable quality with
+far less data and fits the app's personalization path.
+
 ## Why this can work at all
 
 Lip-reading is very data-hungry (the English model saw ~1,400 h), so 13.5 h from
