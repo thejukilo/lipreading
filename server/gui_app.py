@@ -27,6 +27,8 @@ from .voices import VoicesStore
 
 BASE_CKPT = SessionConfig().checkpoint             # the shipped base model path
 PERSONALIZED_CKPT = "checkpoints/personalized.pth"  # produced by fine-tuning
+DUTCH_CKPT = "checkpoints/dutch/dutch_vsr.pth"       # produced by the Phase-3 Dutch run
+_BROWSE = "__browse__"                               # sentinel for the "Browse…" item
 
 # A short, phonetically varied passage for recording a clean voice reference.
 RECORD_PASSAGE = (
@@ -246,6 +248,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.del_voice_btn.clicked.connect(self._on_delete_voice)
         self.quality_slider.valueChanged.connect(self._on_quality_changed)
         self.cleanup_cb.currentTextChanged.connect(self._on_cleanup_backend_changed)
+        self.recog_model_cb.currentIndexChanged.connect(self._on_recog_changed)
 
     # ---- device population + config <-> widgets ---------------------------
 
@@ -373,7 +376,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.auto_chk.setChecked(self.cfg.auto_speak)
 
     def _widgets_to_cfg(self) -> None:
-        self.cfg.checkpoint = self.recog_model_cb.currentData() or BASE_CKPT
+        ckpt = self.recog_model_cb.currentData()
+        self.cfg.checkpoint = ckpt if ckpt and ckpt != _BROWSE else BASE_CKPT
         self.cfg.camera = self.camera_cb.currentData() if self.camera_cb.currentData() is not None else 0
         self.cfg.virtual_cam = self.vcam_chk.isChecked()
         self.cfg.output_device = self.mic_cb.currentData()
@@ -485,15 +489,45 @@ class MainWindow(QtWidgets.QMainWindow):
             tts.inference_timesteps = value
 
     def _populate_recog_models(self) -> None:
-        """Base always; Personalized only if a fine-tuned checkpoint exists."""
+        """Base always; Personalized / Dutch only if that checkpoint exists; plus a
+        Browse… item to point at any .pth (e.g. an experimental base)."""
         keep = self.recog_model_cb.currentData() if self.recog_model_cb.count() else self.cfg.checkpoint
         self.recog_model_cb.blockSignals(True)
         self.recog_model_cb.clear()
         self.recog_model_cb.addItem("Base (shipped)", BASE_CKPT)
         if os.path.isfile(PERSONALIZED_CKPT):
             self.recog_model_cb.addItem("Personalized (yours)", PERSONALIZED_CKPT)
+        if os.path.isfile(DUTCH_CKPT):
+            self.recog_model_cb.addItem("Dutch (Phase 3)", DUTCH_CKPT)
+        # If the saved config points at some other checkpoint, keep it visible.
+        if keep and keep not in (BASE_CKPT, PERSONALIZED_CKPT, DUTCH_CKPT) and os.path.isfile(keep):
+            self.recog_model_cb.addItem(f"Custom: {os.path.basename(keep)}", keep)
+        self.recog_model_cb.addItem("Browse…", _BROWSE)
         self._select_data(self.recog_model_cb, keep)
         self.recog_model_cb.blockSignals(False)
+        self._last_recog_data = self.recog_model_cb.currentData()
+
+    def _on_recog_changed(self) -> None:
+        """Handle the Browse… item: pick any .pth and add/select it."""
+        if self.recog_model_cb.currentData() != _BROWSE:
+            self._last_recog_data = self.recog_model_cb.currentData()
+            return
+        prev = getattr(self, "_last_recog_data", BASE_CKPT)
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Choose a recognition model (.pth)",
+            os.path.dirname(DUTCH_CKPT), "Checkpoints (*.pth *.pt);;All files (*)")
+        if not path:  # cancelled — revert to the previous selection
+            self._select_data(self.recog_model_cb, prev)
+            return
+        # Insert (or reselect) the chosen checkpoint just before Browse….
+        existing = self.recog_model_cb.findData(path)
+        if existing == -1:
+            self.recog_model_cb.blockSignals(True)
+            self.recog_model_cb.insertItem(
+                self.recog_model_cb.count() - 1, f"Custom: {os.path.basename(path)}", path)
+            self.recog_model_cb.blockSignals(False)
+        self._select_data(self.recog_model_cb, path)
+        self._last_recog_data = path
 
     def _teach_train(self) -> None:
         if self._training:
