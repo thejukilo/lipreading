@@ -26,12 +26,15 @@ SYSTEM_PROMPT = (
     "- Do NOT change grammar, tense, sentence structure, punctuation, or style, "
     "and do NOT add or remove words beyond fixing a misrecognition.\n"
     "- Keep the original capitalization.\n"
+    "- Reply in the SAME LANGUAGE as the input. NEVER translate (Dutch stays "
+    "Dutch, English stays English).\n"
     "Output ONLY the resulting sentence, nothing else. If nothing needs fixing, "
     "return the sentence unchanged."
 )
 
-# Few-shot anchors: two fixes and one deliberate no-change (teaches it not to
-# paraphrase correct words like supermarket/car).
+# Few-shot anchors: fixes + deliberate no-change examples in BOTH English and
+# Dutch, so the model learns to fix lip-errors, never paraphrase correct words,
+# and stay in the input's language (Dutch in -> Dutch out, no translation).
 _FEW_SHOT = [
     ("I love to walk with my god in the park",
      "I love to walk with my dog in the park"),
@@ -39,6 +42,11 @@ _FEW_SHOT = [
      "Hi welcome, in this meeting we will present the numbers."),
     ("I will go to the supermarket and drive with my car.",
      "I will go to the supermarket and drive with my car."),
+    # Dutch: a p/b viseme fix, and a no-change anchor (do not translate/paraphrase).
+    ("de kinderen spelen buiten met de pal",
+     "de kinderen spelen buiten met de bal"),
+    ("ik ga naar de supermarkt en rijd met mijn auto",
+     "ik ga naar de supermarkt en rijd met mijn auto"),
 ]
 
 
@@ -101,12 +109,15 @@ class OllamaCorrector(Corrector):
             headers={"Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            # Generous timeout: the FIRST request loads the model into memory,
+            # which can take a while (later requests are fast while it stays warm).
+            with urllib.request.urlopen(req, timeout=120) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except Exception as e:
             raise RuntimeError(
-                f"Ollama request failed ({e}). Is Ollama running and is the "
-                f"model '{self.model}' pulled?  ollama pull {self.model}"
+                f"Ollama request failed ({e}). If it timed out, the model was "
+                f"probably loading — try once more. Otherwise check Ollama is "
+                f"running and the model is pulled:  ollama pull {self.model}"
             ) from e
         out = (data.get("message", {}) or {}).get("content", "").strip()
         return out or text
