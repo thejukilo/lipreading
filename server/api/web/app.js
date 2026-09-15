@@ -122,14 +122,34 @@ function setStatus(id, msg, isErr) {
 }
 
 // ---- audio playback --------------------------------------------------------
-let lastUrl = null;
-function playB64(b64, mime = "audio/wav") {
+let audioCtx = null, lastUrl = null;
+function bytesFromB64(b64) {
+  const bin = atob(b64), a = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+  return a;
+}
+async function playB64(b64, mime = "audio/wav") {
   if (!b64) return;
+  const bytes = bytesFromB64(b64);
+  // Preferred: Web Audio decode + play from sample 0. Plain <audio>.play() on a
+  // just-created blob URL can clip the first word while it buffers.
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    audioCtx = audioCtx || new AC();
+    if (audioCtx.state === "suspended") await audioCtx.resume();
+    const buf = await audioCtx.decodeAudioData(bytes.buffer.slice(0));
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf; src.connect(audioCtx.destination); src.start(0);
+    return;
+  } catch { /* fall back to <audio> below */ }
   if (lastUrl) URL.revokeObjectURL(lastUrl);
-  const bin = atob(b64), bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   lastUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
-  const p = $("player"); p.src = lastUrl; p.play().catch(() => {});
+  const p = $("player");
+  p.src = lastUrl;
+  p.addEventListener("canplaythrough", function once() {
+    p.removeEventListener("canplaythrough", once); p.currentTime = 0; p.play().catch(() => {});
+  }, { once: true });
+  p.load();
 }
 
 // ============================================================================
