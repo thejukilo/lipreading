@@ -40,3 +40,4 @@ class VoiceOut(BaseModel):
     slug: str
     engine: str
     created_at: float
+    is_default: bool = False

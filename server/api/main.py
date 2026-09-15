@@ -19,7 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db import init_db
-from .routers import auth, utter
+from .routers import auth, utter, voices
 
 
 @asynccontextmanager
@@ -48,6 +48,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(utter.router)
+    app.include_router(voices.router)
     return app
 
 
