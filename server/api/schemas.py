@@ -55,6 +55,7 @@ class JobOut(BaseModel):
     n_samples: int
     result_model_id: str | None = None
     error: str | None = None
+    log: str = ""
     created_at: float
     finished_at: float | None = None
 

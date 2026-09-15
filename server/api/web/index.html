@@ -178,7 +178,16 @@
       <div class="card">
         <div class="voice"><span class="name">Training status</span><span class="spacer"></span><span class="muted" id="trainState">idle</span></div>
         <p class="muted" id="trainDetail" style="margin-top:8px;"></p>
+        <pre id="trainLog" class="muted" style="white-space:pre-wrap; max-height:150px; overflow:auto; margin:8px 0 0; font-size:12px;"></pre>
         <button class="btn secondary" id="trainNowBtn" style="margin-top:10px;">Train now</button>
+      </div>
+
+      <div class="card">
+        <div class="voice"><span class="name">Teach a specific phrase</span></div>
+        <p class="muted">Say the same thing ~10 times (e.g. your name), then “Train now”. Great for testing that personalization works.</p>
+        <div class="field"><input id="customPhrase" type="text" placeholder="e.g. lode van de velde" /></div>
+        <button class="talk" id="customRecBtn" style="padding:14px; font-size:16px; margin-top:10px;">Hold to record this phrase</button>
+        <p class="muted" id="customCount" style="margin-top:8px;">0 recorded this session.</p>
       </div>
     </div>
   </main>

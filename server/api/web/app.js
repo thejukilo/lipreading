@@ -262,15 +262,39 @@ function encodeWav(chunks, sampleRate) {
 // ============================================================================
 // TEACH
 // ============================================================================
-let teachQueue = [], teachTotalPrompts = 0, teachDone = 0, statusTimer = null;
+let teachQueue = [], teachTotalPrompts = 0, teachDone = 0, statusTimer = null, customCount = 0;
 
 function initTeach() {
   pushToTalk($("teachCam"), $("teachRecBtn"), onTeachClip);
+  pushToTalk($("teachCam"), $("customRecBtn"), onCustomClip);
   $("teachStartBtn").onclick = startTeach;
   $("trainNowBtn").onclick = async () => {
     try { const j = await api("/api/teach/train", { method: "POST" }); setStatus("teachStatus", `Training ${j.status}…`); refreshTeachStatus(); }
     catch (e) { setStatus("teachStatus", detail(e), true); }
   };
+}
+
+// Record one repetition of a user-typed phrase (e.g. their name).
+async function onCustomClip(frames, err) {
+  const phrase = $("customPhrase").value.trim();
+  if (!phrase) { setStatus("teachStatus", "Type a phrase first.", true); return; }
+  if (err) { setStatus("teachStatus", err, true); return; }
+  $("customRecBtn").disabled = true;
+  const fd = new FormData();
+  frames.forEach((b, i) => fd.append("frames", b, `f${i}.jpg`));
+  fd.append("phrase", phrase); fd.append("fps", String(FPS));
+  try {
+    const out = await api("/api/teach/samples", { method: "POST", form: fd });
+    customCount += 1;
+    $("customCount").textContent = `${customCount} recorded this session · ${out.samples_total} total clips`;
+    if (out.training_triggered) setStatus("teachStatus", "Enough new clips — training started! ✨");
+    else setStatus("teachStatus", `Saved “${phrase}”. Record a few more, then Train now.`);
+    refreshTeachStatus();
+  } catch (e) {
+    setStatus("teachStatus", detail(e), true);
+  } finally {
+    $("customRecBtn").disabled = false;
+  }
 }
 async function startTeach() {
   try {
@@ -323,9 +347,13 @@ async function refreshTeachStatus() {
     const state = j ? j.status : "idle";
     $("trainState").textContent = state;
     let d = `${s.samples_total} clips recorded · ${s.new_since_train}/${s.retrain_threshold} new toward next auto-train.`;
-    if (s.active_model_id) d += " Your private model is active.";
+    if (s.active_model_id) d += " Your private model is active. ✅";
     if (j && j.status === "failed" && j.error) d += ` Last run failed: ${j.error}`;
     $("trainDetail").textContent = d;
+    // Live training log (finetune progress) — proof it actually ran.
+    const log = $("trainLog");
+    if (j && j.log) { log.textContent = j.log.trim().split("\n").slice(-12).join("\n"); log.scrollTop = log.scrollHeight; }
+    else log.textContent = "";
   } catch { /* ignore transient */ }
 }
 
