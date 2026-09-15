@@ -1,0 +1,19 @@
+# Multi-user backend (server/api) — accounts, per-user voices & models, and the
+# background training queue. Install alongside the base requirements:
+#
+#   pip install -r requirements-app.txt
+#
+# Runs the API on your PC now; the same code moves to the cloud by pointing
+# LIPREADING_DB_URL at Postgres and serving behind HTTPS.
+#
+#   uvicorn server.api.main:app --port 8000
+#
+fastapi
+uvicorn[standard]
+sqlalchemy>=2.0
+pyjwt>=2.8
+bcrypt>=4.0
+python-multipart
+email-validator          # pydantic EmailStr validation
+# httpx is only needed to run the test suite (fastapi TestClient).
+httpx

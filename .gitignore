@@ -24,3 +24,7 @@ env/
 .DS_Store
 .idea/
 .vscode/
+.venv-app/
+*.db
+lipreading.db
+server/api/**/__pycache__/
