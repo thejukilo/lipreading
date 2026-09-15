@@ -41,9 +41,10 @@ async def _lifespan(app: FastAPI):
     # Windows (0xc0000374). Skipped in tests (which use a fake service).
     if not os.environ.get("LIPREADING_DISABLE_WORKER"):
         from .speech import get_speech_service
+        from .config import BASE_CHECKPOINT
 
         try:
-            print("[startup] preloading model… (first run can take a while)")
+            print(f"[startup] preloading model: {BASE_CHECKPOINT} (first run can take a while)")
             get_speech_service().preload()
             print("[startup] model ready.")
         except Exception as e:  # noqa: BLE001 - serve anyway; /utter will report

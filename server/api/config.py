@@ -62,3 +62,10 @@ JWT_TTL_SECONDS = int(os.environ.get("LIPREADING_JWT_TTL", str(30 * 24 * 3600)))
 
 # How many *new* recorded sentences trigger an automatic background retrain.
 RETRAIN_THRESHOLD = int(os.environ.get("LIPREADING_RETRAIN_THRESHOLD", "10"))
+
+# The shared base VSR checkpoint the API serves (and personalizes from). Kept
+# independent of the desktop app's ~/.lipreading/config.json so the API always
+# knows which model it's running. Defaults to the English base; override with
+# LIPREADING_BASE_CHECKPOINT to serve a different one (e.g. the Dutch model).
+BASE_CHECKPOINT = (os.environ.get("LIPREADING_BASE_CHECKPOINT")
+                   or os.path.join("checkpoints", "vsr_trlrs2lrs3vox2avsp_base.pth"))

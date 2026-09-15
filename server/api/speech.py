@@ -54,7 +54,13 @@ class LocalSpeechService(SpeechService):
             from ..settings import load_config
 
             cfg = load_config()
+        from .config import BASE_CHECKPOINT
+
         self.cfg = cfg
+        # Pin the base model to the API's own choice, NOT whatever the desktop
+        # app last saved in ~/.lipreading/config.json (which may be the Dutch
+        # model). Per-user private models still override this per request.
+        self.cfg.checkpoint = BASE_CHECKPOINT
         # Serializes GPU use between request inference and the training worker.
         self._lock = threading.Lock()
         self._engines: dict[str, object] = {}      # checkpoint path -> engine

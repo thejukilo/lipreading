@@ -123,11 +123,11 @@ def process_job(db: Session, job: TrainingJob, trainer) -> TrainingJob:
         db.commit()
 
     try:
-        from ..settings import load_config
+        from .config import BASE_CHECKPOINT
 
         user = db.get(User, job.user_id)
         store = user_training_store(job.user_id)
-        base = load_config().checkpoint
+        base = BASE_CHECKPOINT
         out_path = os.path.join(models_dir(job.user_id), f"{job.id}.pth")
         path = trainer(user, store, base, out_path, progress)
 
