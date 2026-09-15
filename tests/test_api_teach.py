@@ -172,3 +172,29 @@ def test_teach_status_isolated_between_users(ctx):
     _add(c, ha, "a-phrase")
     assert c.get("/api/teach/status", headers=hb).json()["samples_total"] == 0
     assert c.get("/api/teach/status", headers=ha).json()["samples_total"] == 1
+
+
+def test_list_and_delete_sample(ctx):
+    c, _ = ctx
+    h = _reg(c)
+    _add(c, h, "keep this")
+    bad = _add(c, h, "off camera oops").json()["sample_id"]
+    rows = c.get("/api/teach/samples", headers=h).json()
+    assert {r["phrase"] for r in rows} == {"keep this", "off camera oops"}
+
+    r = c.delete(f"/api/teach/samples/{bad}", headers=h)
+    assert r.status_code == 204
+    rows = c.get("/api/teach/samples", headers=h).json()
+    assert [r["phrase"] for r in rows] == ["keep this"]
+    assert c.get("/api/teach/status", headers=h).json()["samples_total"] == 1
+
+
+def test_delete_sample_is_owner_scoped(ctx):
+    c, _ = ctx
+    ha = _reg(c, "a@b.com")
+    hb = _reg(c, "b@b.com")
+    sid = _add(c, ha, "mine").json()["sample_id"]
+    # B cannot delete or see A's recording
+    assert c.delete(f"/api/teach/samples/{sid}", headers=hb).status_code == 404
+    assert c.get("/api/teach/samples", headers=hb).json() == []
+    assert c.get("/api/teach/samples", headers=ha).json()[0]["phrase"] == "mine"

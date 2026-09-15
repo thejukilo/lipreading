@@ -11,6 +11,8 @@
 
 from uuid import uuid4
 
+import os
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -18,7 +20,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import get_current_user
 from ..models import TrainingJob, TrainingSample, User
-from ..schemas import JobOut, SampleOut, SentencesOut, TeachStatusOut
+from ..schemas import JobOut, SampleOut, SampleRow, SentencesOut, TeachStatusOut
 from ..sentences import sample_sentences
 from ..config import RETRAIN_THRESHOLD
 from ..training import (
@@ -27,6 +29,7 @@ from ..training import (
     count_samples,
     enqueue_if_ready,
     get_teach_store,
+    user_training_store,
 )
 
 router = APIRouter(prefix="/api/teach", tags=["teach"])
@@ -74,6 +77,30 @@ def add_sample(
         training_triggered=job is not None,
         job_id=job.id if job else None,
     )
+
+
+@router.get("/samples", response_model=list[SampleRow])
+def list_samples(user: User = Depends(get_current_user),
+                 db: Session = Depends(get_db)) -> list[SampleRow]:
+    rows = db.scalars(
+        select(TrainingSample).where(TrainingSample.user_id == user.id)
+        .order_by(TrainingSample.created_at.desc())
+    ).all()
+    return list(rows)
+
+
+@router.delete("/samples/{sample_id}", status_code=204)
+def delete_sample(sample_id: str, user: User = Depends(get_current_user),
+                  db: Session = Depends(get_db)):
+    s = db.get(TrainingSample, sample_id)
+    if s is None or s.user_id != user.id:
+        raise HTTPException(status_code=404, detail="recording not found")
+    # Remove from the training store (manifest + file) so finetune won't use it,
+    # then drop the DB row.
+    user_training_store(user.id).delete_clip(os.path.basename(s.clip_path))
+    db.delete(s)
+    db.commit()
+    return None
 
 
 @router.get("/status", response_model=TeachStatusOut)

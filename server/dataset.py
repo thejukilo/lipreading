@@ -140,3 +140,16 @@ class TrainingStore:
             else:
                 keep.append(e)
         self._save(keep)
+
+    def delete_clip(self, name: str) -> None:
+        """Remove a single clip by file name (from the manifest + disk).
+
+        Tolerant of a missing manifest/file so callers can delete a DB-tracked
+        sample even if its clip was never written (e.g. in tests).
+        """
+        keep = [e for e in self._load() if e.get("clip") != name]
+        try:
+            os.remove(self.clip_path(name))
+        except OSError:
+            pass
+        self._save(keep)

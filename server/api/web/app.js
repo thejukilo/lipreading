@@ -268,10 +268,32 @@ function initTeach() {
   pushToTalk($("teachCam"), $("teachRecBtn"), onTeachClip);
   pushToTalk($("teachCam"), $("customRecBtn"), onCustomClip);
   $("teachStartBtn").onclick = startTeach;
+  $("refreshSamplesBtn").onclick = loadSamples;
   $("trainNowBtn").onclick = async () => {
     try { const j = await api("/api/teach/train", { method: "POST" }); setStatus("teachStatus", `Training ${j.status}…`); refreshTeachStatus(); }
     catch (e) { setStatus("teachStatus", detail(e), true); }
   };
+}
+
+async function loadSamples() {
+  const el = $("sampleList");
+  try {
+    const rows = await api("/api/teach/samples");
+    if (!rows.length) { el.innerHTML = `<p class="muted" style="margin:0">No recordings yet.</p>`; return; }
+    el.innerHTML = "";
+    for (const r of rows) {
+      const row = document.createElement("div");
+      row.className = "voice"; row.style.padding = "6px 0";
+      row.innerHTML = `<span class="name"></span><span class="muted" style="margin-left:8px">${r.n_frames}f${r.consumed ? " · trained" : ""}</span>
+        <span class="spacer"></span><button data-act="del">✕</button>`;
+      row.querySelector(".name").textContent = r.phrase;
+      row.querySelector('[data-act="del"]').onclick = async () => {
+        try { await api(`/api/teach/samples/${r.id}`, { method: "DELETE" }); loadSamples(); refreshTeachStatus(); }
+        catch (e) { setStatus("teachStatus", detail(e), true); }
+      };
+      el.appendChild(row);
+    }
+  } catch (e) { el.innerHTML = `<p class="err" style="margin:0">${detail(e)}</p>`; }
 }
 
 // Record one repetition of a user-typed phrase (e.g. their name).
@@ -290,6 +312,7 @@ async function onCustomClip(frames, err) {
     if (out.training_triggered) setStatus("teachStatus", "Enough new clips — training started! ✨");
     else setStatus("teachStatus", `Saved “${phrase}”. Record a few more, then Train now.`);
     refreshTeachStatus();
+    loadSamples();
   } catch (e) {
     setStatus("teachStatus", detail(e), true);
   } finally {
@@ -364,7 +387,7 @@ function switchTab(tab) {
   for (const b of document.querySelectorAll("nav.tabs button")) b.classList.toggle("active", b.dataset.tab === tab);
   for (const v of ["speak", "voices", "teach"]) $("view-" + v).classList.toggle("hidden", v !== tab);
   if (tab === "voices") loadVoices();
-  if (tab === "teach") refreshTeachStatus();
+  if (tab === "teach") { refreshTeachStatus(); loadSamples(); }
 }
 function initNav() {
   for (const b of document.querySelectorAll("nav.tabs button")) b.onclick = () => switchTab(b.dataset.tab);

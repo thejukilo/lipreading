@@ -69,6 +69,16 @@ class SampleOut(BaseModel):
     job_id: str | None = None
 
 
+class SampleRow(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    phrase: str
+    n_frames: int
+    created_at: float
+    consumed: bool
+
+
 class TeachStatusOut(BaseModel):
     samples_total: int
     new_since_train: int
