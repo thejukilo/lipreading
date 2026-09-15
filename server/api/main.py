@@ -35,9 +35,20 @@ _WEB = os.path.join(os.path.dirname(__file__), "web")
 async def _lifespan(app: FastAPI):
     init_db()
     worker = None
-    # Background training worker. Disabled in tests (they drive process_job
-    # directly with a fake trainer); otherwise runs the real finetune().
+    # Preload the model on the MAIN thread here (before any request), so the
+    # native import chain (transformers->pandas->pyarrow) happens on the main
+    # thread — importing it first on a worker thread corrupts the heap on
+    # Windows (0xc0000374). Skipped in tests (which use a fake service).
     if not os.environ.get("LIPREADING_DISABLE_WORKER"):
+        from .speech import get_speech_service
+
+        try:
+            print("[startup] preloading model… (first run can take a while)")
+            get_speech_service().preload()
+            print("[startup] model ready.")
+        except Exception as e:  # noqa: BLE001 - serve anyway; /utter will report
+            print(f"[startup] model preload failed (will retry on first use): {e}")
+
         from .training import TrainingWorker
 
         worker = TrainingWorker()

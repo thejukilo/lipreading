@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import os
 import threading
-from concurrent.futures import ThreadPoolExecutor
 
 MIN_FRAMES = 8   # ~0.3s at 25fps; anything shorter isn't readable
 
@@ -56,20 +55,28 @@ class LocalSpeechService(SpeechService):
 
             cfg = load_config()
         self.cfg = cfg
-        # ALL model work runs on this one thread. FastAPI dispatches sync
-        # endpoints across a threadpool, but the vision/CUDA stack (mediapipe,
-        # torch) is not thread-safe to init/call from arbitrary threads and can
-        # crash the process natively. A single dedicated worker gives thread
-        # affinity *and* serializes GPU use.
-        self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vsr")
+        # Serializes GPU use between request inference and the training worker.
+        self._lock = threading.Lock()
         self._engines: dict[str, object] = {}      # checkpoint path -> engine
         self._tts_cache: dict[tuple, object] = {}   # voice key -> TTS backend
         self._corrector = None
         self._corrector_ready = False
 
-    def _run(self, fn):
-        """Run fn() on the dedicated model thread and wait for the result."""
-        return self._pool.submit(fn).result()
+    def preload(self) -> None:
+        """Import heavy deps + build the base engine ON THE CALLING THREAD.
+
+        Must run on the *main* thread at startup: on Windows some native
+        extensions (pyarrow, pulled in via transformers) corrupt the process
+        heap (0xc0000374) when first imported on a worker thread. Doing the
+        imports here, on the main thread, means every later use just reuses the
+        already-loaded modules — including the background training worker.
+        """
+        self._engine(self.cfg.checkpoint)
+        self._get_corrector()
+        try:
+            self._tts_for(None, None, self.cfg.clone_engine)  # default voice
+        except Exception:
+            pass  # a missing default voice model shouldn't block startup
 
     # ---- engines ----------------------------------------------------------
 
@@ -114,13 +121,10 @@ class LocalSpeechService(SpeechService):
         if arr.shape[0] < MIN_FRAMES:
             raise TooFewFrames(
                 f"only {int(arr.shape[0])} usable frame(s) — hold the button longer.")
-
-        def _work():
-            eng = self._engine(model_path)
-            return eng.transcribe_frames(arr)
-
         try:
-            text = self._run(_work)
+            with self._lock:
+                eng = self._engine(model_path)
+                text = eng.transcribe_frames(arr)
         except Exception as e:  # noqa: BLE001 - surface as a clean service error
             raise SpeechError(str(e)) from e
         text = (text or "").strip()
@@ -136,11 +140,9 @@ class LocalSpeechService(SpeechService):
         return text
 
     def synthesize_wav(self, text, voice_ref=None, prompt_text=None, engine="voxcpm") -> bytes:
-        def _work():
-            return self._tts_for(voice_ref, prompt_text, engine).synthesize_to_wav(text)
-
         try:
-            path = self._run(_work)
+            with self._lock:
+                path = self._tts_for(voice_ref, prompt_text, engine).synthesize_to_wav(text)
         except Exception as e:  # noqa: BLE001
             raise SpeechError(str(e)) from e
         try:

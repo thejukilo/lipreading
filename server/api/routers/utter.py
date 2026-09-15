@@ -41,7 +41,7 @@ def _resolve_voice(db: Session, user: User):
 
 
 @router.post("/utter")
-def utter(
+async def utter(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     service: SpeechService = Depends(get_speech_service),
@@ -50,7 +50,10 @@ def utter(
     speak: bool = Form(True),
     cleanup: bool = Form(True),
 ):
-    blobs = [f.file.read() for f in frames]
+    # async endpoint on purpose: the model was imported+built on the main
+    # (event-loop) thread at startup, so we run inference here on that same
+    # thread rather than a threadpool worker (native heap-safe on Windows).
+    blobs = [await f.read() for f in frames]
     model_path = _resolve_model_path(db, user)
     try:
         text = service.transcribe(blobs, fps=fps, cleanup=cleanup, model_path=model_path)
