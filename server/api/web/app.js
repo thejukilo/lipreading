@@ -357,6 +357,7 @@ async function enterApp() {
   }
   switchTab("speak");
   await ensureCamera();
+  $("talk").disabled = !stream;   // enable Hold-to-talk once the camera is live
   setStatus("speakStatus", stream ? "ready — hold the button and mouth a sentence" : "camera unavailable");
   refreshTeachStatus();
   if (statusTimer) clearInterval(statusTimer);
