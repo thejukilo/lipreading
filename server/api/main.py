@@ -13,19 +13,32 @@ or ``python -m server.api``.
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db import init_db
-from .routers import auth, utter, voices
+from .routers import auth, teach, utter, voices
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     init_db()
-    yield
+    worker = None
+    # Background training worker. Disabled in tests (they drive process_job
+    # directly with a fake trainer); otherwise runs the real finetune().
+    if not os.environ.get("LIPREADING_DISABLE_WORKER"):
+        from .training import TrainingWorker
+
+        worker = TrainingWorker()
+        worker.start()
+    try:
+        yield
+    finally:
+        if worker is not None:
+            worker.stop()
 
 
 def create_app() -> FastAPI:
@@ -49,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(utter.router)
     app.include_router(voices.router)
+    app.include_router(teach.router)
     return app
 
 

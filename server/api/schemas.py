@@ -41,3 +41,36 @@ class VoiceOut(BaseModel):
     engine: str
     created_at: float
     is_default: bool = False
+
+
+class SentencesOut(BaseModel):
+    sentences: list[str]
+
+
+class JobOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    status: str
+    n_samples: int
+    result_model_id: str | None = None
+    error: str | None = None
+    created_at: float
+    finished_at: float | None = None
+
+
+class SampleOut(BaseModel):
+    sample_id: str
+    n_frames: int
+    samples_total: int
+    new_since_train: int
+    training_triggered: bool
+    job_id: str | None = None
+
+
+class TeachStatusOut(BaseModel):
+    samples_total: int
+    new_since_train: int
+    retrain_threshold: int
+    active_model_id: str | None = None
+    latest_job: JobOut | None = None

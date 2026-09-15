@@ -39,3 +39,10 @@ def models_dir(user_id: str) -> str:
     d = os.path.join(user_dir(user_id), "models")
     os.makedirs(d, exist_ok=True)
     return d
+
+
+def training_dir(user_id: str) -> str:
+    """Base dir for the user's TrainingStore (holds clips/ + manifest.json)."""
+    d = os.path.join(user_dir(user_id), "training")
+    os.makedirs(d, exist_ok=True)
+    return d
