@@ -79,6 +79,17 @@ class SampleRow(BaseModel):
     consumed: bool
 
 
+class PracticeIn(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+
+
+class PracticePhraseOut(BaseModel):
+    id: str
+    text: str
+    reps: int          # how many clips recorded for this phrase so far
+    created_at: float
+
+
 class TeachStatusOut(BaseModel):
     samples_total: int
     new_since_train: int

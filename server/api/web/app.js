@@ -181,7 +181,8 @@ function initSpeak() {
     }
   });
 
-  // Correct the transcript and store this clip as a training sample.
+  // Correct the transcript, keep this clip as rep #1, and queue the sentence
+  // to practice (one clip rarely fixes a misread — record a few more on Teach).
   $("addTrainBtn").onclick = async () => {
     const phrase = $("transcript").value.trim();
     if (!phrase || !lastSpeakFrames) { setStatus("speakStatus", "Nothing to add yet.", true); return; }
@@ -191,10 +192,9 @@ function initSpeak() {
     lastSpeakFrames.forEach((b, i) => fd.append("frames", b, `f${i}.jpg`));
     fd.append("phrase", phrase); fd.append("fps", String(FPS));
     try {
-      const out = await api("/api/teach/samples", { method: "POST", form: fd });
-      setStatus("speakStatus", out.training_triggered
-        ? "added ✓ — enough new clips, training started! ✨"
-        : `added ✓ — now ${out.samples_total} clips. Train on the Teach tab.`);
+      await api("/api/teach/samples", { method: "POST", form: fd });      // rep #1
+      await api("/api/teach/practice", { method: "POST", json: { text: phrase } }); // queue it
+      setStatus("speakStatus", "added ✓ — open Teach and record it a few more times, then train.");
       $("addTrainBtn").hidden = true; lastSpeakFrames = null;
     } catch (e) {
       setStatus("speakStatus", detail(e), true);
@@ -368,6 +368,7 @@ async function onCustomClip(frames, err) {
     else setStatus("teachStatus", `Saved “${phrase}”. Record a few more, then Train now.`);
     refreshTeachStatus();
     loadSamples();
+    loadPractice();
   } catch (e) {
     setStatus("teachStatus", detail(e), true);
   } finally {
@@ -418,6 +419,39 @@ async function onTeachClip(frames, err) {
     $("teachRecBtn").disabled = false;
   }
 }
+async function loadPractice() {
+  const card = $("practiceCard"), el = $("practiceList");
+  try {
+    const rows = await api("/api/teach/practice");
+    card.classList.toggle("hidden", rows.length === 0);
+    el.innerHTML = "";
+    for (const p of rows) {
+      const enough = p.reps >= 5;
+      const row = document.createElement("div");
+      row.className = "voice"; row.style.cssText = "padding:8px 0; align-items:flex-start";
+      row.innerHTML = `<div style="flex:1; min-width:0">
+          <div class="name" style="white-space:normal"></div>
+          <div class="muted" style="font-size:12px">${p.reps} clip${p.reps === 1 ? "" : "s"}${enough ? " · ready ✓" : " · record a few more"}</div>
+        </div>
+        <button data-act="rec">Record</button>
+        <button data-act="del">✕</button>`;
+      row.querySelector(".name").textContent = p.text;
+      row.querySelector('[data-act="rec"]').onclick = () => {
+        // Switch to "specific phrase" mode, prefilled with this sentence.
+        document.querySelector('#recMode button[data-mode="phrase"]').click();
+        $("customPhrase").value = p.text;
+        $("customRecBtn").scrollIntoView({ behavior: "smooth", block: "center" });
+        setStatus("teachStatus", `Hold to record: “${p.text}”`);
+      };
+      row.querySelector('[data-act="del"]').onclick = async () => {
+        try { await api(`/api/teach/practice/${p.id}`, { method: "DELETE" }); loadPractice(); }
+        catch (e) { setStatus("teachStatus", detail(e), true); }
+      };
+      el.appendChild(row);
+    }
+  } catch { card.classList.add("hidden"); }
+}
+
 async function refreshTeachStatus() {
   try {
     const s = await api("/api/teach/status");
@@ -448,7 +482,7 @@ function switchTab(tab) {
   for (const b of document.querySelectorAll("nav.tabs button")) b.classList.toggle("active", b.dataset.tab === tab);
   for (const v of ["speak", "voices", "teach"]) $("view-" + v).classList.toggle("hidden", v !== tab);
   if (tab === "voices") loadVoices();
-  if (tab === "teach") { refreshTeachStatus(); loadSamples(); }
+  if (tab === "teach") { refreshTeachStatus(); loadSamples(); loadPractice(); }
 }
 function initNav() {
   for (const b of document.querySelectorAll("nav.tabs button")) b.onclick = () => switchTab(b.dataset.tab);

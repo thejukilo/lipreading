@@ -111,3 +111,14 @@ class PersonalModel(Base):
     base_checkpoint: Mapped[str] = mapped_column(String(1024))
     n_samples: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[float] = mapped_column(Float, default=_now)
+
+
+class PracticePhrase(Base):
+    """A sentence the user flagged (e.g. a Speak misread) to record & train on."""
+
+    __tablename__ = "practice_phrases"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[float] = mapped_column(Float, default=_now)

@@ -198,3 +198,33 @@ def test_delete_sample_is_owner_scoped(ctx):
     assert c.delete(f"/api/teach/samples/{sid}", headers=hb).status_code == 404
     assert c.get("/api/teach/samples", headers=hb).json() == []
     assert c.get("/api/teach/samples", headers=ha).json()[0]["phrase"] == "mine"
+
+
+def test_practice_add_list_reps_and_delete(ctx):
+    c, _ = ctx
+    h = _reg(c)
+    r = c.post("/api/teach/practice", headers=h, json={"text": "and I like cinnamon"})
+    assert r.status_code == 201
+    pid = r.json()["id"]
+    assert r.json()["reps"] == 0
+    # adding the same text again is idempotent (no duplicate)
+    c.post("/api/teach/practice", headers=h, json={"text": "and I like cinnamon"})
+    lst = c.get("/api/teach/practice", headers=h).json()
+    assert len(lst) == 1
+
+    # recording that phrase bumps its rep count
+    _add(c, h, "and I like cinnamon")
+    _add(c, h, "and I like cinnamon")
+    assert c.get("/api/teach/practice", headers=h).json()[0]["reps"] == 2
+
+    assert c.delete(f"/api/teach/practice/{pid}", headers=h).status_code == 204
+    assert c.get("/api/teach/practice", headers=h).json() == []
+
+
+def test_practice_is_owner_scoped(ctx):
+    c, _ = ctx
+    ha = _reg(c, "a@b.com")
+    hb = _reg(c, "b@b.com")
+    pid = c.post("/api/teach/practice", headers=ha, json={"text": "secret"}).json()["id"]
+    assert c.get("/api/teach/practice", headers=hb).json() == []
+    assert c.delete(f"/api/teach/practice/{pid}", headers=hb).status_code == 404

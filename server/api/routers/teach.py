@@ -14,13 +14,21 @@ from uuid import uuid4
 import os
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import get_current_user
-from ..models import TrainingJob, TrainingSample, User
-from ..schemas import JobOut, SampleOut, SampleRow, SentencesOut, TeachStatusOut
+from ..models import PracticePhrase, TrainingJob, TrainingSample, User
+from ..schemas import (
+    JobOut,
+    PracticeIn,
+    PracticePhraseOut,
+    SampleOut,
+    SampleRow,
+    SentencesOut,
+    TeachStatusOut,
+)
 from ..sentences import sample_sentences
 from ..config import RETRAIN_THRESHOLD
 from ..training import (
@@ -99,6 +107,51 @@ def delete_sample(sample_id: str, user: User = Depends(get_current_user),
     # then drop the DB row.
     user_training_store(user.id).delete_clip(os.path.basename(s.clip_path))
     db.delete(s)
+    db.commit()
+    return None
+
+
+def _reps(db: Session, user_id: str, text: str) -> int:
+    return int(db.scalar(select(func.count()).select_from(TrainingSample)
+                         .where(TrainingSample.user_id == user_id,
+                                TrainingSample.phrase == text)) or 0)
+
+
+@router.get("/practice", response_model=list[PracticePhraseOut])
+def list_practice(user: User = Depends(get_current_user),
+                  db: Session = Depends(get_db)) -> list[PracticePhraseOut]:
+    rows = db.scalars(
+        select(PracticePhrase).where(PracticePhrase.user_id == user.id)
+        .order_by(PracticePhrase.created_at.desc())
+    ).all()
+    return [PracticePhraseOut(id=p.id, text=p.text, reps=_reps(db, user.id, p.text),
+                              created_at=p.created_at) for p in rows]
+
+
+@router.post("/practice", response_model=PracticePhraseOut, status_code=201)
+def add_practice(body: PracticeIn, user: User = Depends(get_current_user),
+                 db: Session = Depends(get_db)) -> PracticePhraseOut:
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="text is required")
+    p = db.scalar(select(PracticePhrase).where(
+        PracticePhrase.user_id == user.id, PracticePhrase.text == text))
+    if p is None:
+        p = PracticePhrase(id=uuid4().hex, user_id=user.id, text=text)
+        db.add(p)
+        db.commit()
+        db.refresh(p)
+    return PracticePhraseOut(id=p.id, text=p.text, reps=_reps(db, user.id, p.text),
+                             created_at=p.created_at)
+
+
+@router.delete("/practice/{practice_id}", status_code=204)
+def delete_practice(practice_id: str, user: User = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    p = db.get(PracticePhrase, practice_id)
+    if p is None or p.user_id != user.id:
+        raise HTTPException(status_code=404, detail="practice phrase not found")
+    db.delete(p)
     db.commit()
     return None
 
