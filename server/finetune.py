@@ -33,6 +33,19 @@ match auto_avsr's own train loop and run on the user's GPU.
 from __future__ import annotations
 
 import os
+import re
+
+# The model's vocabulary is LRS3-style: UPPERCASE, no punctuation. Training
+# labels must match, or stray punctuation/casing (e.g. from the LLM "clean up"
+# layer) tokenizes to <unk> and teaches the model to emit junk. Keep letters,
+# digits, spaces and apostrophes (for contractions like DON'T); drop the rest.
+_LABEL_DROP = re.compile(r"[^A-Z0-9' ]+")
+
+
+def normalize_label(text: str) -> str:
+    t = (text or "").upper().replace("’", "'")   # smart quote -> '
+    t = _LABEL_DROP.sub(" ", t)
+    return re.sub(r"\s+", " ", t).strip()
 
 
 # --- auto_avsr's collate, copied verbatim so batch shapes match their model ---
@@ -90,9 +103,10 @@ class _ClipDataset:
                     on_msg(f"skipped “{e['phrase']}” (no face detected)")
                 continue
             vid = torch.tensor(crop).permute(0, 3, 1, 2)   # (T,3,96,96)
-            # auto_avsr's tokenizer/model vocabulary is UPPERCASE (LRS3). Lowercase
-            # labels tokenize to <unk> — so the model would learn to output <unk>.
-            tokens = text_transform.tokenize(e["phrase"].upper())
+            # auto_avsr's tokenizer/model vocabulary is UPPERCASE (LRS3) with no
+            # punctuation. normalize_label() enforces that so stray casing/
+            # punctuation (e.g. from the LLM cleanup layer) can't leak in as <unk>.
+            tokens = text_transform.tokenize(normalize_label(e["phrase"]))
             unk = text_transform.hashmap.get("<unk>")
             if unk is not None and len(tokens) and all(int(t) == int(unk) for t in tokens):
                 if on_msg:

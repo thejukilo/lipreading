@@ -162,6 +162,7 @@ function initSpeak() {
     if (err) { setStatus("speakStatus", err, true); return; }
     $("talk").disabled = true;
     $("addTrainBtn").hidden = true;
+    $("addTrainHint").hidden = true;
     setStatus("speakStatus", `thinking… (${frames.length} frames)`);
     const fd = new FormData();
     frames.forEach((b, i) => fd.append("frames", b, `f${i}.jpg`));
@@ -172,7 +173,14 @@ function initSpeak() {
       const data = await api("/api/utter", { method: "POST", form: fd });
       $("transcript").value = data.text || "";
       setStatus("speakStatus", data.message || "done — you can edit the text, then add it to training");
-      if (data.text) { lastSpeakFrames = frames; $("addTrainBtn").hidden = false; }
+      if (data.text) {
+        lastSpeakFrames = frames;
+        $("addTrainBtn").hidden = false;
+        $("addTrainHint").hidden = false;
+        $("addTrainHint").textContent = $("cleanup").checked
+          ? "⚠ Clean up was on — the text may have been auto-corrected. Make sure it's exactly what you said before adding."
+          : "Check the words match exactly what you said before adding.";
+      }
       if (data.audio) playB64(data.audio, data.audio_mime);
     } catch (e) {
       setStatus("speakStatus", detail(e), true);
@@ -195,7 +203,7 @@ function initSpeak() {
       await api("/api/teach/samples", { method: "POST", form: fd });      // rep #1
       await api("/api/teach/practice", { method: "POST", json: { text: phrase } }); // queue it
       setStatus("speakStatus", "added ✓ — open Teach and record it a few more times, then train.");
-      $("addTrainBtn").hidden = true; lastSpeakFrames = null;
+      $("addTrainBtn").hidden = true; $("addTrainHint").hidden = true; lastSpeakFrames = null;
     } catch (e) {
       setStatus("speakStatus", detail(e), true);
     } finally {
