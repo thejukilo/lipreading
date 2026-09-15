@@ -155,10 +155,13 @@ async function playB64(b64, mime = "audio/wav") {
 // ============================================================================
 // SPEAK
 // ============================================================================
+let lastSpeakFrames = null;
+
 function initSpeak() {
   pushToTalk($("cam"), $("talk"), async (frames, err) => {
     if (err) { setStatus("speakStatus", err, true); return; }
     $("talk").disabled = true;
+    $("addTrainBtn").hidden = true;
     setStatus("speakStatus", `thinking… (${frames.length} frames)`);
     const fd = new FormData();
     frames.forEach((b, i) => fd.append("frames", b, `f${i}.jpg`));
@@ -167,8 +170,9 @@ function initSpeak() {
     fd.append("cleanup", $("cleanup").checked ? "true" : "false");
     try {
       const data = await api("/api/utter", { method: "POST", form: fd });
-      $("transcript").textContent = data.text || "—";
-      setStatus("speakStatus", data.message || "done");
+      $("transcript").value = data.text || "";
+      setStatus("speakStatus", data.message || "done — you can edit the text, then add it to training");
+      if (data.text) { lastSpeakFrames = frames; $("addTrainBtn").hidden = false; }
       if (data.audio) playB64(data.audio, data.audio_mime);
     } catch (e) {
       setStatus("speakStatus", detail(e), true);
@@ -176,6 +180,28 @@ function initSpeak() {
       $("talk").disabled = false;
     }
   });
+
+  // Correct the transcript and store this clip as a training sample.
+  $("addTrainBtn").onclick = async () => {
+    const phrase = $("transcript").value.trim();
+    if (!phrase || !lastSpeakFrames) { setStatus("speakStatus", "Nothing to add yet.", true); return; }
+    $("addTrainBtn").disabled = true;
+    setStatus("speakStatus", "adding to training…");
+    const fd = new FormData();
+    lastSpeakFrames.forEach((b, i) => fd.append("frames", b, `f${i}.jpg`));
+    fd.append("phrase", phrase); fd.append("fps", String(FPS));
+    try {
+      const out = await api("/api/teach/samples", { method: "POST", form: fd });
+      setStatus("speakStatus", out.training_triggered
+        ? "added ✓ — enough new clips, training started! ✨"
+        : `added ✓ — now ${out.samples_total} clips. Train on the Teach tab.`);
+      $("addTrainBtn").hidden = true; lastSpeakFrames = null;
+    } catch (e) {
+      setStatus("speakStatus", detail(e), true);
+    } finally {
+      $("addTrainBtn").disabled = false;
+    }
+  };
 }
 
 // ============================================================================
@@ -288,17 +314,26 @@ function initTeach() {
   pushToTalk($("teachCam"), $("teachRecBtn"), onTeachClip);
   pushToTalk($("teachCam"), $("customRecBtn"), onCustomClip);
   $("teachStartBtn").onclick = startTeach;
-  $("refreshSamplesBtn").onclick = loadSamples;
   $("trainNowBtn").onclick = async () => {
-    try { const j = await api("/api/teach/train", { method: "POST" }); setStatus("teachStatus", `Training ${j.status}…`); refreshTeachStatus(); }
+    try { const j = await api("/api/teach/train", { method: "POST" }); setStatus("teachStatus", `Training ${j.status}…`); $("statusBox").open = true; refreshTeachStatus(); }
     catch (e) { setStatus("teachStatus", detail(e), true); }
   };
+  // Segmented record-mode switch.
+  for (const b of document.querySelectorAll("#recMode button")) {
+    b.onclick = () => {
+      for (const x of document.querySelectorAll("#recMode button")) x.classList.toggle("on", x === b);
+      const phrase = b.dataset.mode === "phrase";
+      $("modePhrase").classList.toggle("hidden", !phrase);
+      $("modePrompts").classList.toggle("hidden", phrase);
+    };
+  }
 }
 
 async function loadSamples() {
   const el = $("sampleList");
   try {
     const rows = await api("/api/teach/samples");
+    $("recCountLbl").textContent = rows.length ? `(${rows.length})` : "";
     if (!rows.length) { el.innerHTML = `<p class="muted" style="margin:0">No recordings yet.</p>`; return; }
     el.innerHTML = "";
     for (const r of rows) {
@@ -393,7 +428,13 @@ async function refreshTeachStatus() {
     if (s.active_model_id) d += " Your private model is active. ✅";
     if (j && j.status === "failed" && j.error) d += ` Last run failed: ${j.error}`;
     $("trainDetail").textContent = d;
-    // Live training log (finetune progress) — proof it actually ran.
+    // Step-2 hint + train button state.
+    const enough = s.samples_total >= 4;
+    $("trainHint").textContent = enough
+      ? `${s.samples_total} clips ready — train your private model.`
+      : `Record at least 4 clips to train (you have ${s.samples_total}).`;
+    $("trainNowBtn").disabled = !enough || state === "running" || state === "queued";
+    // Live training log — proof it ran.
     const log = $("trainLog");
     if (j && j.log) { log.textContent = j.log.trim().split("\n").slice(-12).join("\n"); log.scrollTop = log.scrollHeight; }
     else log.textContent = "";
