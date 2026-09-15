@@ -1,0 +1,14 @@
+{
+  "name": "Lipreading",
+  "short_name": "Lipreading",
+  "description": "Speak with your eyes — lip-reading to speech.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d0f14",
+  "theme_color": "#0d0f14",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

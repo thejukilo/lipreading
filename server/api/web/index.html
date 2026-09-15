@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Lipreading</title>
+<link rel="manifest" href="/manifest.webmanifest" />
+<meta name="theme-color" content="#0d0f14" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Lipreading" />
+<link rel="apple-touch-icon" href="/icon.svg" />
+<link rel="icon" href="/icon.svg" />
+<style>
+  :root { color-scheme: dark; --bg:#0d0f14; --panel:#12151c; --panel2:#161a22;
+          --line:#232833; --text:#e8ecf2; --dim:#8a93a3; --accent:#37d67a;
+          --accent-ink:#06210f; --danger:#ff5470; --danger2:#ff8a8a;
+          --safe-t: env(safe-area-inset-top,0px); --safe-b: env(safe-area-inset-bottom,0px); }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100dvh; }
+  body { font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;
+         background:var(--bg); color:var(--text); display:flex; flex-direction:column; overflow:hidden; }
+  button { font-family:inherit; cursor:pointer; }
+  input { font-family:inherit; }
+  .hidden { display:none !important; }
+
+  /* ---- auth ---- */
+  #auth { flex:1; display:flex; flex-direction:column; justify-content:center;
+          padding:24px; padding-top:calc(24px + var(--safe-t)); gap:14px; max-width:440px; width:100%; margin:0 auto; }
+  #auth h1 { font-size:26px; margin:0 0 2px; }
+  #auth p.sub { color:var(--dim); margin:0 0 18px; font-size:14px; }
+  .field { display:flex; flex-direction:column; gap:6px; }
+  .field label { font-size:13px; color:var(--dim); }
+  .field input { padding:14px; border-radius:12px; border:1px solid var(--line);
+                 background:var(--panel); color:var(--text); font-size:16px; }
+  .btn { border:none; border-radius:12px; padding:16px; font-size:16px; font-weight:700;
+         background:var(--accent); color:var(--accent-ink); }
+  .btn:disabled { background:#33404a; color:#7c8794; }
+  .btn.secondary { background:transparent; border:1px solid var(--line); color:var(--text); font-weight:600; }
+  .btn.danger { background:transparent; border:1px solid var(--danger); color:var(--danger2); font-weight:600; }
+  .linkrow { text-align:center; color:var(--dim); font-size:14px; }
+  .linkrow a { color:var(--accent); text-decoration:none; }
+  .err { color:var(--danger2); font-size:14px; min-height:18px; }
+
+  /* ---- app shell ---- */
+  #app { flex:1; display:flex; flex-direction:column; min-height:0; }
+  header.top { padding:calc(10px + var(--safe-t)) 16px 10px; display:flex; align-items:center;
+               gap:10px; border-bottom:1px solid var(--line); background:var(--panel); }
+  header.top .brand { font-weight:700; }
+  header.top .who { color:var(--dim); font-size:13px; margin-left:auto; }
+  header.top button { background:none; border:1px solid var(--line); color:var(--dim);
+                      border-radius:8px; padding:6px 10px; font-size:13px; }
+  main { flex:1; min-height:0; position:relative; overflow:hidden; }
+  .view { position:absolute; inset:0; display:flex; flex-direction:column; }
+  .view.scroll { overflow-y:auto; padding:16px; gap:14px; }
+
+  /* ---- speak ---- */
+  .stage { position:relative; flex:1; min-height:0; background:#000; }
+  .stage video { width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
+  .overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; }
+  .overlay div { width:46%; aspect-ratio:3/4; border:2px dashed rgba(255,255,255,.35); border-radius:16px; }
+  .panel { padding:14px 16px calc(14px + var(--safe-b)); background:var(--panel); border-top:1px solid var(--line); }
+  .status { font-size:13px; color:var(--dim); min-height:18px; margin-bottom:8px; }
+  .status.err { color:var(--danger2); }
+  .transcript { font-size:19px; line-height:1.35; min-height:52px; margin-bottom:14px;
+                padding:10px 12px; background:var(--bg); border:1px solid var(--line);
+                border-radius:12px; word-break:break-word; }
+  .talk { width:100%; border:none; border-radius:999px; padding:20px; font-size:19px; font-weight:700;
+          color:var(--accent-ink); background:var(--accent); touch-action:none; user-select:none;
+          transition:transform .05s ease, background .1s ease; }
+  .talk:disabled { background:#33404a; color:#7c8794; }
+  .talk.rec { background:var(--danger); color:#2a0710; transform:scale(.99); }
+  .row { display:flex; gap:14px; align-items:center; margin-top:12px; font-size:13px; color:#a7b0be; }
+  .row label { display:flex; align-items:center; gap:6px; }
+
+  /* ---- cards / lists ---- */
+  h2.title { font-size:18px; margin:2px 0 0; }
+  .muted { color:var(--dim); font-size:14px; margin:0; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; }
+  .voice { display:flex; align-items:center; gap:10px; }
+  .voice .name { font-weight:600; }
+  .voice .badge { font-size:11px; background:var(--accent); color:var(--accent-ink);
+                  padding:2px 8px; border-radius:999px; font-weight:700; }
+  .voice .spacer { flex:1; }
+  .voice button { background:none; border:1px solid var(--line); color:var(--dim);
+                  border-radius:8px; padding:6px 10px; font-size:12px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .progress { height:8px; background:var(--line); border-radius:999px; overflow:hidden; }
+  .progress > div { height:100%; background:var(--accent); width:0%; transition:width .3s ease; }
+  .prompt { font-size:22px; line-height:1.3; font-weight:600; }
+
+  /* ---- tab bar ---- */
+  nav.tabs { display:flex; border-top:1px solid var(--line); background:var(--panel);
+             padding-bottom:var(--safe-b); }
+  nav.tabs button { flex:1; background:none; border:none; color:var(--dim); padding:10px 0 8px;
+                    font-size:11px; display:flex; flex-direction:column; align-items:center; gap:3px; }
+  nav.tabs button .ico { font-size:20px; }
+  nav.tabs button.active { color:var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- ================= AUTH ================= -->
+<section id="auth">
+  <h1>Lipreading</h1>
+  <p class="sub" id="authSub">Speak with your eyes. Sign in to continue.</p>
+  <div class="field"><label>Email</label><input id="email" type="email" autocomplete="email" inputmode="email" /></div>
+  <div class="field" id="nameField"><label>Display name</label><input id="displayName" type="text" autocomplete="name" /></div>
+  <div class="field"><label>Password</label><input id="password" type="password" autocomplete="current-password" /></div>
+  <div class="err" id="authErr"></div>
+  <button class="btn" id="authBtn">Sign in</button>
+  <div class="linkrow" id="authToggle"></div>
+</section>
+
+<!-- ================= APP ================= -->
+<section id="app" class="hidden">
+  <header class="top">
+    <span class="brand">Lipreading</span>
+    <span class="who" id="who"></span>
+    <button id="logout">Log out</button>
+  </header>
+
+  <main>
+    <!-- Speak -->
+    <div class="view" id="view-speak">
+      <div class="stage">
+        <video id="cam" playsinline autoplay muted></video>
+        <div class="overlay"><div></div></div>
+      </div>
+      <div class="panel">
+        <div class="status" id="speakStatus">starting camera…</div>
+        <div class="transcript" id="transcript">—</div>
+        <button class="talk" id="talk" disabled>Hold to talk</button>
+        <div class="row">
+          <label><input type="checkbox" id="cleanup" checked /> Clean up</label>
+          <label><input type="checkbox" id="speak" checked /> Speak</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Voices -->
+    <div class="view scroll" id="view-voices">
+      <h2 class="title">Your voices</h2>
+      <p class="muted">Record or upload a short clip of a voice. It's cloned when you speak.</p>
+      <div id="voiceList" class="card">Loading…</div>
+
+      <h2 class="title">Add a voice</h2>
+      <div class="card" style="display:flex; flex-direction:column; gap:10px;">
+        <div class="field"><label>Name</label><input id="voiceName" type="text" placeholder="e.g. My voice" /></div>
+        <div class="grid2">
+          <button class="btn secondary" id="voiceRecBtn">● Record 8s</button>
+          <button class="btn secondary" id="voicePickBtn">Upload WAV</button>
+        </div>
+        <input id="voiceFile" type="file" accept="audio/wav,audio/x-wav,.wav" class="hidden" />
+        <div class="status" id="voiceStatus"></div>
+        <button class="btn" id="voiceSaveBtn" disabled>Save voice</button>
+      </div>
+    </div>
+
+    <!-- Teach -->
+    <div class="view scroll" id="view-teach">
+      <h2 class="title">Teach the model your face</h2>
+      <p class="muted">Read each sentence to the camera. After enough clips, a private model trains in the background just for you.</p>
+      <div class="stage" style="flex:none; height:200px; border-radius:14px; overflow:hidden;">
+        <video id="teachCam" playsinline autoplay muted></video>
+        <div class="overlay"><div style="width:34%"></div></div>
+      </div>
+      <div class="card">
+        <div class="progress"><div id="teachBar"></div></div>
+        <p class="muted" id="teachCount" style="margin-top:8px;">—</p>
+        <div class="prompt" id="teachPrompt">Tap “Start” to begin.</div>
+        <div class="status" id="teachStatus"></div>
+        <div class="grid2" style="margin-top:12px;">
+          <button class="btn secondary" id="teachStartBtn">Start</button>
+          <button class="talk" id="teachRecBtn" disabled style="padding:14px;font-size:16px;">Hold to record</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="voice"><span class="name">Training status</span><span class="spacer"></span><span class="muted" id="trainState">idle</span></div>
+        <p class="muted" id="trainDetail" style="margin-top:8px;"></p>
+        <button class="btn secondary" id="trainNowBtn" style="margin-top:10px;">Train now</button>
+      </div>
+    </div>
+  </main>
+
+  <nav class="tabs">
+    <button data-tab="speak" class="active"><span class="ico">🗣️</span>Speak</button>
+    <button data-tab="voices"><span class="ico">🎙️</span>Voices</button>
+    <button data-tab="teach"><span class="ico">🎓</span>Teach</button>
+  </nav>
+</section>
+
+<audio id="player" playsinline></audio>
+<script src="/app.js"></script>
+</body>
+</html>

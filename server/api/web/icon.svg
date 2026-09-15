@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0d0f14"/>
+  <g fill="none" stroke="#37d67a" stroke-width="26" stroke-linecap="round" stroke-linejoin="round">
+    <!-- stylized lips -->
+    <path d="M120 268 Q256 188 392 268 Q256 348 120 268 Z"/>
+    <path d="M120 268 Q256 300 392 268"/>
+  </g>
+  <g fill="#37d67a">
+    <circle cx="196" cy="196" r="16"/>
+    <circle cx="316" cy="196" r="16"/>
+  </g>
+</svg>
