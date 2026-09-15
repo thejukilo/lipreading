@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 MIN_FRAMES = 8   # ~0.3s at 25fps; anything shorter isn't readable
 
@@ -55,11 +56,20 @@ class LocalSpeechService(SpeechService):
 
             cfg = load_config()
         self.cfg = cfg
-        self._lock = threading.Lock()
+        # ALL model work runs on this one thread. FastAPI dispatches sync
+        # endpoints across a threadpool, but the vision/CUDA stack (mediapipe,
+        # torch) is not thread-safe to init/call from arbitrary threads and can
+        # crash the process natively. A single dedicated worker gives thread
+        # affinity *and* serializes GPU use.
+        self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vsr")
         self._engines: dict[str, object] = {}      # checkpoint path -> engine
         self._tts_cache: dict[tuple, object] = {}   # voice key -> TTS backend
         self._corrector = None
         self._corrector_ready = False
+
+    def _run(self, fn):
+        """Run fn() on the dedicated model thread and wait for the result."""
+        return self._pool.submit(fn).result()
 
     # ---- engines ----------------------------------------------------------
 
@@ -104,12 +114,13 @@ class LocalSpeechService(SpeechService):
         if arr.shape[0] < MIN_FRAMES:
             raise TooFewFrames(
                 f"only {int(arr.shape[0])} usable frame(s) — hold the button longer.")
+
+        def _work():
+            eng = self._engine(model_path)
+            return eng.transcribe_frames(arr)
+
         try:
-            with self._lock:
-                eng = self._engine(model_path)
-                text = eng.transcribe_frames(arr)
-        except TooFewFrames:
-            raise
+            text = self._run(_work)
         except Exception as e:  # noqa: BLE001 - surface as a clean service error
             raise SpeechError(str(e)) from e
         text = (text or "").strip()
@@ -125,10 +136,11 @@ class LocalSpeechService(SpeechService):
         return text
 
     def synthesize_wav(self, text, voice_ref=None, prompt_text=None, engine="voxcpm") -> bytes:
-        tts = self._tts_for(voice_ref, prompt_text, engine)
+        def _work():
+            return self._tts_for(voice_ref, prompt_text, engine).synthesize_to_wav(text)
+
         try:
-            with self._lock:
-                path = tts.synthesize_to_wav(text)
+            path = self._run(_work)
         except Exception as e:  # noqa: BLE001
             raise SpeechError(str(e)) from e
         try:

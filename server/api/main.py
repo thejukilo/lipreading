@@ -13,6 +13,7 @@ or ``python -m server.api``.
 
 from __future__ import annotations
 
+import faulthandler
 import os
 from contextlib import asynccontextmanager
 
@@ -22,6 +23,10 @@ from fastapi.responses import FileResponse
 
 from .db import init_db
 from .routers import auth, teach, utter, voices
+
+# Print a Python stack if a native crash (segfault) hits the model stack, instead
+# of the process dying silently.
+faulthandler.enable()
 
 _WEB = os.path.join(os.path.dirname(__file__), "web")
 
