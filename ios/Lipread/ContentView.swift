@@ -32,6 +32,7 @@ struct AccountView: View {
     @State private var info: APIClient.ModelInfo?
     @State private var busy = false
     @State private var msg = ""
+    @State private var loadError: String?
 
     private var api: APIClient { APIClient(session: session) }
 
@@ -67,6 +68,9 @@ struct AccountView: View {
                         }
                         LabeledContent("Your recordings",
                                        value: "\(i.total_clips) clips · \(i.distinct_phrases) sentences")
+                    } else if let err = loadError {
+                        Text(err).font(.footnote).foregroundStyle(.red)
+                        Button("Retry") { Task { await load() } }
                     } else {
                         ProgressView()
                     }
@@ -80,7 +84,14 @@ struct AccountView: View {
         .task { await load() }
     }
 
-    private func load() async { info = try? await api.modelInfo() }
+    private func load() async {
+        loadError = nil
+        do {
+            info = try await api.modelInfo()
+        } catch {
+            loadError = "Couldn't load model info: \(error.localizedDescription). Is the backend running and updated (restart it after pulling)?"
+        }
+    }
 
     private func select(_ usePersonal: Bool) async {
         busy = true
