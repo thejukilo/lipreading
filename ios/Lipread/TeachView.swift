@@ -27,6 +27,9 @@ struct TeachView: View {
                         .stroke(.white.opacity(0.35), style: .init(lineWidth: 2, dash: [8]))
                         .frame(width: 150, height: 150)
                 }
+                .overlay(alignment: .bottom) {
+                    QualityBadge(quality: camera.quality)
+                }
                 .padding(.top, 8)
 
                 Text(target.isEmpty ? "Pick a sentence or correction below." : target)
@@ -115,11 +118,6 @@ struct TeachView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .disabled((teachStatus?.samples_total ?? 0) < 4)
-                        if teachStatus?.active_model_id != nil {
-                            Button("Use base model (undo personalization)", role: .destructive) {
-                                Task { await reset() }
-                            }.font(.footnote)
-                        }
                     }.frame(maxWidth: .infinity)
                 }
             }
@@ -201,14 +199,6 @@ struct TeachView: View {
         do {
             let j = try await api.teachTrain()
             status = "Training \(j.status)…"
-            await refresh()
-        } catch { status = error.localizedDescription }
-    }
-
-    private func reset() async {
-        do {
-            try await api.teachReset()
-            status = "Reverted to the base model."
             await refresh()
         } catch { status = error.localizedDescription }
     }

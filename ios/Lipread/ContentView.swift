@@ -29,12 +29,74 @@ struct ComingSoon: View {
 
 struct AccountView: View {
     @EnvironmentObject var session: SessionStore
+    @State private var info: APIClient.ModelInfo?
+    @State private var busy = false
+    @State private var msg = ""
+
+    private var api: APIClient { APIClient(session: session) }
+
     var body: some View {
-        VStack(spacing: 16) {
-            if let email = session.email { Text(email).font(.headline) }
-            Button("Log out", role: .destructive) { Task { await session.signOut() } }
-                .buttonStyle(.bordered)
+        NavigationStack {
+            Form {
+                Section("Account") {
+                    if let email = session.email {
+                        LabeledContent("Signed in", value: email)
+                    }
+                    Button("Log out", role: .destructive) {
+                        Task { await session.signOut() }
+                    }
+                }
+
+                Section("Recognition model") {
+                    if let i = info {
+                        Picker("Use", selection: Binding(
+                            get: { i.active == "personal" },
+                            set: { useP in Task { await select(useP) } })) {
+                            Text("Base").tag(false)
+                            Text("Personalized").tag(true)
+                        }
+                        .pickerStyle(.segmented)
+                        .disabled(!i.has_personal || busy)
+
+                        if i.has_personal {
+                            LabeledContent("Last trained", value: i.trained_at.map(Self.dateStr) ?? "—")
+                            LabeledContent("Trained on", value: "\(i.n_samples ?? 0) clips")
+                        } else {
+                            Text("No personalized model yet. Record varied sentences on Teach and train one.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
+                        LabeledContent("Your recordings",
+                                       value: "\(i.total_clips) clips · \(i.distinct_phrases) sentences")
+                    } else {
+                        ProgressView()
+                    }
+                    if !msg.isEmpty {
+                        Text(msg).font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Account")
         }
-        .padding()
+        .task { await load() }
+    }
+
+    private func load() async { info = try? await api.modelInfo() }
+
+    private func select(_ usePersonal: Bool) async {
+        busy = true
+        do {
+            info = try await api.modelSelect(usePersonal: usePersonal)
+            msg = usePersonal ? "Speak now uses your personalized model."
+                              : "Speak now uses the base model."
+        } catch {
+            msg = error.localizedDescription
+            info = try? await api.modelInfo()   // reflect the real state
+        }
+        busy = false
+    }
+
+    private static func dateStr(_ t: Double) -> String {
+        let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short
+        return f.string(from: Date(timeIntervalSince1970: t))
     }
 }

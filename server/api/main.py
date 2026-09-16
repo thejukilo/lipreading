@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from .db import init_db
-from .routers import auth, teach, utter, voices
+from .routers import auth, model, teach, utter, voices
 
 # Opt-in crash diagnostics. Some native libs (pyarrow, TF-Lite) throw a
 # *handled* first-chance access violation during import on Windows; with
@@ -86,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(utter.router)
     app.include_router(voices.router)
     app.include_router(teach.router)
+    app.include_router(model.router)
 
     # ---- static PWA (same origin as the API, so bearer tokens Just Work) ----
     def _web(name: str, media: str | None = None):

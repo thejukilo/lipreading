@@ -36,6 +36,15 @@ struct APIClient {
         let reps: Int
     }
 
+    struct ModelInfo: Decodable {
+        let active: String            // "base" | "personal"
+        let has_personal: Bool
+        let trained_at: Double?
+        let n_samples: Int?
+        let total_clips: Int
+        let distinct_phrases: Int
+    }
+
     enum APIError: LocalizedError {
         case notAuthenticated
         case server(String)
@@ -125,6 +134,24 @@ struct APIClient {
         let req = try await authorized("api/teach/reset", method: "POST")
         let (data, resp) = try await URLSession.shared.data(for: req)
         try Self.check(resp, data)
+    }
+
+    // MARK: - Model
+
+    func modelInfo() async throws -> ModelInfo {
+        let req = try await authorized("api/model/info")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.check(resp, data)
+        return try JSONDecoder().decode(ModelInfo.self, from: data)
+    }
+
+    func modelSelect(usePersonal: Bool) async throws -> ModelInfo {
+        var req = try await authorized("api/model/select", method: "POST")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(["use_personal": usePersonal])
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.check(resp, data)
+        return try JSONDecoder().decode(ModelInfo.self, from: data)
     }
 
     // MARK: - helpers

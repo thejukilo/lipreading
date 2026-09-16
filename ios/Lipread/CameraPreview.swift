@@ -31,3 +31,16 @@ struct CameraPreview: UIViewRepresentable {
         }
     }
 }
+
+/// A small pill showing live camera-quality feedback (framing/lighting).
+struct QualityBadge: View {
+    let quality: QualityReport
+    var body: some View {
+        Text(quality.tip)
+            .font(.caption.bold())
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(quality.ok ? Color.green.opacity(0.85) : Color.orange.opacity(0.9))
+            .foregroundStyle(.white)
+            .clipShape(.capsule)
+    }
+}

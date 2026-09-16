@@ -96,3 +96,16 @@ class TeachStatusOut(BaseModel):
     retrain_threshold: int
     active_model_id: str | None = None
     latest_job: JobOut | None = None
+
+
+class ModelInfoOut(BaseModel):
+    active: str                       # "base" | "personal"
+    has_personal: bool
+    trained_at: float | None = None   # when the personal model was trained
+    n_samples: int | None = None      # clips it trained on
+    total_clips: int = 0              # clips recorded so far
+    distinct_phrases: int = 0         # distinct sentences recorded
+
+
+class ModelSelectIn(BaseModel):
+    use_personal: bool

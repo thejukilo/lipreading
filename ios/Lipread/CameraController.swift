@@ -1,6 +1,13 @@
 import AVFoundation
 import CoreImage
 import UIKit
+import Vision
+
+/// Live camera-quality feedback (framing/lighting) for the preview.
+struct QualityReport: Equatable {
+    var ok = false
+    var tip = "Checking camera…"
+}
 
 /// Front/back camera capture. While `isRecording`, frames are throttled to
 /// ~25 fps (the model's rate), delivered upright, downscaled and JPEG-encoded.
@@ -9,6 +16,7 @@ import UIKit
 final class CameraController: NSObject, ObservableObject {
     @Published var authorized = false
     @Published var position: AVCaptureDevice.Position = .front
+    @Published var quality = QualityReport()
     let session = AVCaptureSession()
 
     private let output = AVCaptureVideoDataOutput()
@@ -19,6 +27,7 @@ final class CameraController: NSObject, ObservableObject {
     private nonisolated(unsafe) var recording = false
     private nonisolated(unsafe) var buffer: [Data] = []
     private nonisolated(unsafe) var lastKept = CMTime.negativeInfinity
+    private nonisolated(unsafe) var lastCheck = CMTime.negativeInfinity
     private let maxSide: CGFloat = 480
     private let targetInterval = 0.039   // ~25 fps to match the model
 
@@ -111,21 +120,70 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
     nonisolated func captureOutput(_ output: AVCaptureOutput,
                                    didOutput sampleBuffer: CMSampleBuffer,
                                    from connection: AVCaptureConnection) {
-        guard recording, let px = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        // Throttle to ~25 fps (the sensor delivers ~30) to match the model.
+        guard let px = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let ts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        if lastKept != .negativeInfinity,
-           CMTimeGetSeconds(CMTimeSubtract(ts, lastKept)) < targetInterval { return }
-        lastKept = ts
 
-        var image = CIImage(cvPixelBuffer: px)
-        let extent = image.extent
-        let scale = min(1, maxSide / max(extent.width, extent.height))
-        if scale < 1 { image = image.transformed(by: .init(scaleX: scale, y: scale)) }
-        if let jpeg = ciContext.jpegRepresentation(
-            of: image, colorSpace: CGColorSpaceCreateDeviceRGB(),
-            options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.6]) {
-            buffer.append(jpeg)
+        if recording {
+            // Throttle to ~25 fps (the sensor delivers ~30) to match the model.
+            if lastKept != .negativeInfinity,
+               CMTimeGetSeconds(CMTimeSubtract(ts, lastKept)) < targetInterval { return }
+            lastKept = ts
+            var image = CIImage(cvPixelBuffer: px)
+            let extent = image.extent
+            let scale = min(1, maxSide / max(extent.width, extent.height))
+            if scale < 1 { image = image.transformed(by: .init(scaleX: scale, y: scale)) }
+            if let jpeg = ciContext.jpegRepresentation(
+                of: image, colorSpace: CGColorSpaceCreateDeviceRGB(),
+                options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.6]) {
+                buffer.append(jpeg)
+            }
+            return
         }
+
+        // Idle: run a lightweight quality check ~1.5x/sec.
+        if lastCheck != .negativeInfinity,
+           CMTimeGetSeconds(CMTimeSubtract(ts, lastCheck)) < 0.66 { return }
+        lastCheck = ts
+        analyzeQuality(px)
+    }
+
+    /// Estimate framing (face size + centering) and brightness, publish a tip.
+    private nonisolated func analyzeQuality(_ px: CVPixelBuffer) {
+        let ci = CIImage(cvPixelBuffer: px)
+        let brightness = averageLuma(ci)
+
+        let handler = VNImageRequestHandler(cvPixelBuffer: px, orientation: .up)
+        let req = VNDetectFaceRectanglesRequest()
+        try? handler.perform([req])
+        let face = (req.results)?.first
+
+        var report = QualityReport()
+        if let box = face?.boundingBox {
+            let frac = box.height           // face height / frame height
+            if frac < 0.22 { report.tip = "Move closer" }
+            else if frac > 0.92 { report.tip = "Move back a little" }
+            else if brightness < 0.16 { report.tip = "Too dark — add light on your face" }
+            else if brightness > 0.97 { report.tip = "Too bright" }
+            else if abs(box.midX - 0.5) > 0.24 || abs(box.midY - 0.5) > 0.30 {
+                report.tip = "Center your face"
+            } else {
+                report.tip = "Good lighting & framing ✓"; report.ok = true
+            }
+        } else {
+            report.tip = brightness < 0.16 ? "Too dark to see a face" : "No face detected — face the camera"
+        }
+        Task { @MainActor in self.quality = report }
+    }
+
+    private nonisolated func averageLuma(_ image: CIImage) -> CGFloat {
+        guard let f = CIFilter(name: "CIAreaAverage", parameters: [
+            kCIInputImageKey: image,
+            kCIInputExtentKey: CIVector(cgRect: image.extent)]),
+            let out = f.outputImage else { return 0.5 }
+        var px = [UInt8](repeating: 0, count: 4)
+        ciContext.render(out, toBitmap: &px, rowBytes: 4,
+                         bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+                         format: .RGBA8, colorSpace: CGColorSpaceCreateDeviceRGB())
+        return (0.299 * CGFloat(px[0]) + 0.587 * CGFloat(px[1]) + 0.114 * CGFloat(px[2])) / 255.0
     }
 }

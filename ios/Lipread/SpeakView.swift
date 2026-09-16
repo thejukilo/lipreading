@@ -41,6 +41,9 @@ struct SpeakView: View {
                     }
                     Spacer()
                 }
+                .overlay(alignment: .bottom) {
+                    QualityBadge(quality: camera.quality).padding(10)
+                }
             }
             .frame(maxHeight: .infinity)
 
