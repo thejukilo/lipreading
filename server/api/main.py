@@ -24,9 +24,12 @@ from fastapi.responses import FileResponse
 from .db import init_db
 from .routers import auth, teach, utter, voices
 
-# Print a Python stack if a native crash (segfault) hits the model stack, instead
-# of the process dying silently.
-faulthandler.enable()
+# Opt-in crash diagnostics. Some native libs (pyarrow, TF-Lite) throw a
+# *handled* first-chance access violation during import on Windows; with
+# faulthandler always on, that prints an alarming (but harmless) stack every
+# startup. Enable it only when debugging a real crash: set LIPREADING_FAULTHANDLER=1.
+if os.environ.get("LIPREADING_FAULTHANDLER"):
+    faulthandler.enable()
 
 _WEB = os.path.join(os.path.dirname(__file__), "web")
 
