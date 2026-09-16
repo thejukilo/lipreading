@@ -1,0 +1,86 @@
+import Foundation
+
+/// Talks to the FastAPI backend, attaching the Supabase access token.
+struct APIClient {
+    let session: SessionStore
+
+    struct UtterResponse: Decodable {
+        let text: String?
+        let audio: String?          // base64 WAV
+        let audio_mime: String?
+        let message: String?
+    }
+
+    enum APIError: LocalizedError {
+        case notAuthenticated
+        case server(String)
+        var errorDescription: String? {
+            switch self {
+            case .notAuthenticated: return "Not signed in."
+            case .server(let m): return m
+            }
+        }
+    }
+
+    private func authorized(_ path: String, method: String = "GET") async throws -> URLRequest {
+        guard let token = await session.accessToken() else { throw APIError.notAuthenticated }
+        var req = URLRequest(url: Config.apiBaseURL.appendingPathComponent(path))
+        req.httpMethod = method
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        return req
+    }
+
+    /// POST a push-to-talk clip (JPEG frames) → transcript (+ optional voice).
+    func utter(frames: [Data], fps: Int = 25, speak: Bool, cleanup: Bool) async throws -> UtterResponse {
+        var req = try await authorized("api/utter", method: "POST")
+        let boundary = "Boundary-\(UUID().uuidString)"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        req.httpBody = Self.multipart(boundary: boundary, frames: frames, fields: [
+            "fps": String(fps),
+            "speak": speak ? "true" : "false",
+            "cleanup": cleanup ? "true" : "false",
+        ])
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.check(resp, data)
+        return try JSONDecoder().decode(UtterResponse.self, from: data)
+    }
+
+    /// POST a labeled clip as a training sample (used by "add to training").
+    func addSample(frames: [Data], phrase: String, fps: Int = 25) async throws {
+        var req = try await authorized("api/teach/samples", method: "POST")
+        let boundary = "Boundary-\(UUID().uuidString)"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        req.httpBody = Self.multipart(boundary: boundary, frames: frames,
+                                      fields: ["phrase": phrase, "fps": String(fps)])
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.check(resp, data)
+    }
+
+    // MARK: - helpers
+
+    private static func check(_ resp: URLResponse, _ data: Data) throws {
+        guard let http = resp as? HTTPURLResponse else { return }
+        if !(200..<300).contains(http.statusCode) {
+            let detail = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"] as? String
+            throw APIError.server(detail ?? "HTTP \(http.statusCode)")
+        }
+    }
+
+    private static func multipart(boundary: String, frames: [Data], fields: [String: String]) -> Data {
+        var body = Data()
+        func append(_ s: String) { body.append(s.data(using: .utf8)!) }
+        for (k, v) in fields {
+            append("--\(boundary)\r\n")
+            append("Content-Disposition: form-data; name=\"\(k)\"\r\n\r\n\(v)\r\n")
+        }
+        for (i, jpeg) in frames.enumerated() {
+            append("--\(boundary)\r\n")
+            append("Content-Disposition: form-data; name=\"frames\"; filename=\"f\(i).jpg\"\r\n")
+            append("Content-Type: image/jpeg\r\n\r\n")
+            body.append(jpeg)
+            append("\r\n")
+        }
+        append("--\(boundary)--\r\n")
+        return body
+    }
+}
