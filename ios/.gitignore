@@ -6,6 +6,6 @@ xcuserdata/
 *.xcscmblueprint
 *.moved-aside
 .DS_Store
-# SwiftPM
-.swiftpm/
-Package.resolved
+# SwiftPM (keep Package.resolved committed so Xcode Cloud pins the same versions)
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.build/
