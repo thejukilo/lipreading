@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C4A3F732305B13360005F97F /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = C4A3F731305B13360005F97F /* Supabase */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		C4A3F6BA305B020B0005F97F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C4A3F732305B13360005F97F /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +117,7 @@
 			);
 			name = Lipread;
 			packageProductDependencies = (
+				C4A3F731305B13360005F97F /* Supabase */,
 			);
 			productName = Lipread;
 			productReference = C4A3F6AC305B02090005F97F /* Lipread.app */;
@@ -195,6 +201,9 @@
 			);
 			mainGroup = C4A3F6A3305B02090005F97F;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C4A3F730305B13360005F97F /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C4A3F6AD305B02090005F97F /* Products */;
 			projectDirPath = "";
@@ -558,6 +567,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C4A3F730305B13360005F97F /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C4A3F731305B13360005F97F /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C4A3F730305B13360005F97F /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = C4A3F6A4305B02090005F97F /* Project object */;
 }
