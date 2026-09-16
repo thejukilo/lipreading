@@ -11,6 +11,31 @@ struct APIClient {
         let message: String?
     }
 
+    // MARK: - Teach models
+
+    struct Sentences: Decodable { let sentences: [String] }
+
+    struct JobInfo: Decodable {
+        let id: String
+        let status: String
+        let error: String?
+        let log: String?
+    }
+
+    struct TeachStatus: Decodable {
+        let samples_total: Int
+        let new_since_train: Int
+        let retrain_threshold: Int
+        let active_model_id: String?
+        let latest_job: JobInfo?
+    }
+
+    struct PracticePhrase: Decodable, Identifiable {
+        let id: String
+        let text: String
+        let reps: Int
+    }
+
     enum APIError: LocalizedError {
         case notAuthenticated
         case server(String)
@@ -54,6 +79,36 @@ struct APIClient {
                                       fields: ["phrase": phrase, "fps": String(fps)])
         let (data, resp) = try await URLSession.shared.data(for: req)
         try Self.check(resp, data)
+    }
+
+    // MARK: - Teach
+
+    func teachSentences(n: Int = 8) async throws -> [String] {
+        let req = try await authorized("api/teach/sentences?n=\(n)")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.check(resp, data)
+        return try JSONDecoder().decode(Sentences.self, from: data).sentences
+    }
+
+    func teachStatus() async throws -> TeachStatus {
+        let req = try await authorized("api/teach/status")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.check(resp, data)
+        return try JSONDecoder().decode(TeachStatus.self, from: data)
+    }
+
+    func teachTrain() async throws -> JobInfo {
+        let req = try await authorized("api/teach/train", method: "POST")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.check(resp, data)
+        return try JSONDecoder().decode(JobInfo.self, from: data)
+    }
+
+    func teachPractice() async throws -> [PracticePhrase] {
+        let req = try await authorized("api/teach/practice")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.check(resp, data)
+        return try JSONDecoder().decode([PracticePhrase].self, from: data)
     }
 
     // MARK: - helpers

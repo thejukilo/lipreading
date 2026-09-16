@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SpeakView: View {
     @EnvironmentObject var session: SessionStore
-    @StateObject private var camera = CameraController()
+    @EnvironmentObject var camera: CameraController
 
     @State private var transcript = ""
     @State private var status = "Hold the button and mouth a sentence."
@@ -64,7 +64,6 @@ struct SpeakView: View {
             }.font(.footnote)
         }
         .padding()
-        .task { await camera.configure() }
     }
 
     private func startHold() {

@@ -2,6 +2,9 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var session: SessionStore
+    // One camera shared by Speak + Teach — two capture sessions on the same
+    // device would conflict.
+    @StateObject private var camera = CameraController()
 
     var body: some View {
         TabView {
@@ -9,11 +12,13 @@ struct ContentView: View {
                 .tabItem { Label("Speak", systemImage: "mouth") }
             ComingSoon(title: "Voices")
                 .tabItem { Label("Voices", systemImage: "mic") }
-            ComingSoon(title: "Teach")
+            TeachView()
                 .tabItem { Label("Teach", systemImage: "graduationcap") }
             AccountView()
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
         }
+        .environmentObject(camera)
+        .task { await camera.configure() }
     }
 }
 
