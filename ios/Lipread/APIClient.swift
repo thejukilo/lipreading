@@ -111,6 +111,15 @@ struct APIClient {
         return try JSONDecoder().decode([PracticePhrase].self, from: data)
     }
 
+    /// Queue a sentence to practice/record later (used by "add to training").
+    func addPractice(text: String) async throws {
+        var req = try await authorized("api/teach/practice", method: "POST")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(["text": text])
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.check(resp, data)
+    }
+
     // MARK: - helpers
 
     private static func check(_ resp: URLResponse, _ data: Data) throws {

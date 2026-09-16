@@ -189,20 +189,16 @@ function initSpeak() {
     }
   });
 
-  // Correct the transcript, keep this clip as rep #1, and queue the sentence
-  // to practice (one clip rarely fixes a misread — record a few more on Teach).
+  // Correct the transcript and queue the SENTENCE to practice on Teach — do not
+  // train on this single (misread) clip.
   $("addTrainBtn").onclick = async () => {
     const phrase = $("transcript").value.trim();
-    if (!phrase || !lastSpeakFrames) { setStatus("speakStatus", "Nothing to add yet.", true); return; }
+    if (!phrase) { setStatus("speakStatus", "Nothing to add yet.", true); return; }
     $("addTrainBtn").disabled = true;
     setStatus("speakStatus", "adding to training…");
-    const fd = new FormData();
-    lastSpeakFrames.forEach((b, i) => fd.append("frames", b, `f${i}.jpg`));
-    fd.append("phrase", phrase); fd.append("fps", String(FPS));
     try {
-      await api("/api/teach/samples", { method: "POST", form: fd });      // rep #1
-      await api("/api/teach/practice", { method: "POST", json: { text: phrase } }); // queue it
-      setStatus("speakStatus", "added ✓ — open Teach and record it a few more times, then train.");
+      await api("/api/teach/practice", { method: "POST", json: { text: phrase } });
+      setStatus("speakStatus", "added ✓ — open Teach and record it a few times, then train.");
       $("addTrainBtn").hidden = true; $("addTrainHint").hidden = true; lastSpeakFrames = null;
     } catch (e) {
       setStatus("speakStatus", detail(e), true);

@@ -10,7 +10,6 @@ struct SpeakView: View {
     @State private var busy = false
     @State private var cleanup = true
     @State private var speak = true
-    @State private var lastFrames: [Data] = []
     @State private var showAddToTraining = false
     @FocusState private var editing: Bool
 
@@ -109,7 +108,7 @@ struct SpeakView: View {
                 let r = try await api.utter(frames: frames, speak: speak, cleanup: cleanup)
                 transcript = r.text ?? ""
                 status = r.message ?? "done — edit the text, then add to training"
-                if let t = r.text, !t.isEmpty { lastFrames = frames; showAddToTraining = true }
+                if let t = r.text, !t.isEmpty { showAddToTraining = true }
                 if let audio = r.audio { AudioPlayer.shared.play(base64: audio) }
             } catch {
                 status = error.localizedDescription
@@ -120,10 +119,12 @@ struct SpeakView: View {
 
     private func addToTraining() async {
         let phrase = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !phrase.isEmpty, !lastFrames.isEmpty else { return }
+        guard !phrase.isEmpty else { return }
         do {
-            try await api.addSample(frames: lastFrames, phrase: phrase)
-            status = "added ✓ — practice it a few more times on the Teach tab."
+            // Queue the corrected SENTENCE to record properly on Teach — do NOT
+            // use this single (misread) clip as training data.
+            try await api.addPractice(text: phrase)
+            status = "added ✓ — go to Teach and record it a few times, then train."
             showAddToTraining = false
         } catch {
             status = error.localizedDescription
