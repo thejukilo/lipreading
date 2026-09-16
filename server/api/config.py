@@ -71,10 +71,18 @@ BASE_CHECKPOINT = (os.environ.get("LIPREADING_BASE_CHECKPOINT")
                    or os.path.join("checkpoints", "vsr_trlrs2lrs3vox2avsp_base.pth"))
 
 # ---- Supabase (cloud) --------------------------------------------------------
-# When SUPABASE_JWT_SECRET is set, the API verifies Supabase-issued JWTs and
-# provisions users from the token, instead of its own email/password auth. Leave
-# unset for local custom-auth development. Find the secret in the Supabase
-# dashboard: Project Settings → API → JWT Settings → JWT Secret.
+# The API accepts Supabase access tokens two ways:
+#   * NEW asymmetric signing keys (ES256/RS256) — verified against the project's
+#     public JWKS. Just set SUPABASE_URL; nothing secret is needed. Recommended.
+#   * LEGACY shared secret (HS256) — set SUPABASE_JWT_SECRET instead.
+# Setting either one (or both) turns on Supabase auth; unset both for local
+# custom-auth development.
 SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET")
 SUPABASE_JWT_AUD = os.environ.get("SUPABASE_JWT_AUD", "authenticated")
-SUPABASE_URL = os.environ.get("SUPABASE_URL")            # for Storage (later phase)
+SUPABASE_URL = os.environ.get("SUPABASE_URL")            # e.g. https://<ref>.supabase.co
+SUPABASE_JWKS_URL = os.environ.get("SUPABASE_JWKS_URL") or (
+    f"{SUPABASE_URL.rstrip('/')}/auth/v1/.well-known/jwks.json" if SUPABASE_URL else None)
+
+
+def supabase_enabled() -> bool:
+    return bool(SUPABASE_JWT_SECRET or SUPABASE_JWKS_URL)

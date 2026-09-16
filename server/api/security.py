@@ -52,19 +52,51 @@ def decode_token(token: str) -> str | None:
     return sub if isinstance(sub, str) else None
 
 
-def verify_supabase_token(token: str) -> dict | None:
-    """Verify a Supabase-issued JWT (HS256, aud='authenticated'); return claims.
+_jwks_client = None
 
-    Supabase signs access tokens with the project's JWT secret. If the project
-    uses asymmetric (RS/ES) keys instead, this returns None and JWKS
-    verification would be needed — not wired yet.
+
+def _jwk_client():
+    """Cached PyJWKClient for Supabase's public signing keys (asymmetric)."""
+    global _jwks_client
+    if _jwks_client is None:
+        from .config import SUPABASE_JWKS_URL
+
+        if not SUPABASE_JWKS_URL:
+            return None
+        _jwks_client = jwt.PyJWKClient(SUPABASE_JWKS_URL)
+    return _jwks_client
+
+
+def verify_supabase_token(token: str) -> dict | None:
+    """Verify a Supabase access token; return its claims, or None.
+
+    Supports both signing schemes:
+    - asymmetric (ES256/RS256) — verified against the project JWKS (public keys);
+    - legacy HS256 — verified with the shared JWT secret.
+    The token header's ``alg`` selects the path.
     """
     from .config import SUPABASE_JWT_AUD, SUPABASE_JWT_SECRET
 
-    if not SUPABASE_JWT_SECRET:
-        return None
     try:
-        return jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"],
+        alg = jwt.get_unverified_header(token).get("alg")
+    except jwt.PyJWTError:
+        return None
+
+    try:
+        if alg == "HS256":
+            if not SUPABASE_JWT_SECRET:
+                return None
+            return jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"],
+                              audience=SUPABASE_JWT_AUD)
+        # Asymmetric: fetch the matching public key by 'kid' from the JWKS.
+        client = _jwk_client()
+        if client is None:
+            return None
+        key = client.get_signing_key_from_jwt(token).key
+        return jwt.decode(token, key, algorithms=["ES256", "RS256"],
                           audience=SUPABASE_JWT_AUD)
     except jwt.PyJWTError:
+        return None
+    except Exception:
+        # JWKS fetch failure etc. — treat as unverifiable rather than 500.
         return None

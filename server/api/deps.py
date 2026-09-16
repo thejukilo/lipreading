@@ -12,7 +12,7 @@ from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .config import SUPABASE_JWT_SECRET
+from .config import supabase_enabled
 from .db import get_db
 from .models import User
 from .security import decode_token, verify_supabase_token
@@ -52,7 +52,7 @@ def get_current_user(
                             detail="missing bearer token")
     token = authorization.split(" ", 1)[1].strip()
 
-    if SUPABASE_JWT_SECRET:
+    if supabase_enabled():
         claims = verify_supabase_token(token)
         if not claims or not isinstance(claims.get("sub"), str):
             raise _UNAUTH

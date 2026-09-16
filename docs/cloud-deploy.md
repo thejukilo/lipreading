@@ -25,9 +25,13 @@ when `SUPABASE_JWT_SECRET` is unset (local dev/tests).
    the connection **pooler** URI and convert the scheme to psycopg:
    `postgresql+psycopg://postgres.<ref>:<password>@<host>:6543/postgres`
    → this is `LIPREADING_DB_URL`.
-2. **JWT secret** — Project Settings → API → JWT Settings → **JWT Secret**
-   → this is `SUPABASE_JWT_SECRET`. (If your project shows only asymmetric keys,
-   tell me — we'll switch verification to JWKS.)
+2. **Token verification** — two options; pick one:
+   - **Recommended (new signing keys):** set **`SUPABASE_URL`** =
+     `https://<ref>.supabase.co`. The backend fetches Supabase's public keys
+     (JWKS) and verifies asymmetric tokens — nothing secret to store.
+   - **Legacy secret:** set **`SUPABASE_JWT_SECRET`** to the *Legacy JWT secret*
+     (Project Settings → API). HS256. Works, but you're handling a secret.
+   You can set both; the token's algorithm picks the path.
 3. **Enable Sign in with Apple** — Authentication → Providers → Apple. You'll
    paste in the Apple keys from step 3 below. Email/password can stay on too.
 4. **Storage bucket** (for the later media move) — Storage → create a private
@@ -46,11 +50,14 @@ when `SUPABASE_JWT_SECRET` is unset (local dev/tests).
 
    | var | value |
    |---|---|
-   | `SUPABASE_JWT_SECRET` | from Supabase step 2 |
-   | `LIPREADING_DB_URL` | from Supabase step 1 |
+   | `SUPABASE_URL` | `https://<ref>.supabase.co` (enables JWKS token verification) |
+   | `LIPREADING_DB_URL` | from Supabase step 1 (scheme `postgresql+psycopg://`) |
    | `LIPREADING_BASE_CHECKPOINT` | `/workspace/checkpoints/vsr_trlrs2lrs3vox2avsp_base.pth` |
    | `LIPREADING_AUTO_AVSR_DIR` | `/workspace/third_party/auto_avsr` |
    | `LIPREADING_DATA_DIR` | `/workspace/data` |
+
+   (Use `SUPABASE_JWT_SECRET` instead of `SUPABASE_URL` only if you chose the
+   legacy-secret option.)
 
 5. Hit `https://<pod>-8000.proxy.runpod.net/health` → `{"ok":true}`.
 
