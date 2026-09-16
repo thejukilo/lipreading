@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SpeakView: View {
     @EnvironmentObject var session: SessionStore
-    @EnvironmentObject var camera: CameraController
+    @StateObject private var camera = CameraController()
 
     @State private var transcript = ""
     @State private var status = "Hold the button and mouth a sentence."
@@ -12,6 +12,7 @@ struct SpeakView: View {
     @State private var speak = true
     @State private var lastFrames: [Data] = []
     @State private var showAddToTraining = false
+    @FocusState private var editing: Bool
 
     private var api: APIClient { APIClient(session: session) }
 
@@ -48,6 +49,7 @@ struct SpeakView: View {
 
             TextField("your words appear here — you can edit them", text: $transcript, axis: .vertical)
                 .lineLimit(2...4)
+                .focused($editing)
                 .padding().background(.quaternary).clipShape(.rect(cornerRadius: 12))
 
             if showAddToTraining {
@@ -79,6 +81,14 @@ struct SpeakView: View {
             }.font(.footnote)
         }
         .padding()
+        .onAppear { Task { await camera.configure() } }
+        .onDisappear { camera.stop() }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { editing = false }
+            }
+        }
     }
 
     private func startHold() {

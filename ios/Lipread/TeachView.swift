@@ -2,15 +2,17 @@ import SwiftUI
 
 struct TeachView: View {
     @EnvironmentObject var session: SessionStore
-    @EnvironmentObject var camera: CameraController
+    @StateObject private var camera = CameraController()
 
     @State private var target = ""                       // phrase to record now
+    @State private var custom = ""                       // user-typed sentence
     @State private var queue: [String] = []              // prompted sentences
     @State private var practice: [APIClient.PracticePhrase] = []
     @State private var teachStatus: APIClient.TeachStatus?
     @State private var status = "Read sentences, or practice a correction, then train."
     @State private var isRecording = false
     @State private var busy = false
+    @FocusState private var editing: Bool
 
     private var api: APIClient { APIClient(session: session) }
 
@@ -33,15 +35,38 @@ struct TeachView: View {
                 holdButton
                 Text(status).font(.footnote).foregroundStyle(.secondary)
 
+                // Your own sentence
+                GroupBox("Train your own sentence") {
+                    VStack(spacing: 8) {
+                        TextField("Type a sentence to train", text: $custom, axis: .vertical)
+                            .lineLimit(1...3)
+                            .focused($editing)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Use this sentence") {
+                            let t = custom.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !t.isEmpty { target = t; editing = false; status = "Hold to record: \(t)" }
+                        }
+                        .disabled(custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }.frame(maxWidth: .infinity)
+                }
+
                 // Prompted sentences
                 GroupBox("Sentences to read") {
                     VStack(spacing: 8) {
                         if queue.isEmpty {
                             Button("Get sentences") { Task { await loadSentences() } }
                         } else {
-                            Text("\(queue.count) left this round")
-                                .font(.footnote).foregroundStyle(.secondary)
-                            Button("Skip this one") { advance() }
+                            Button {
+                                target = queue.first ?? ""
+                                status = "Hold to record: \(target)"
+                            } label: {
+                                Text("Now: “\(queue.first ?? "")” · \(queue.count) left")
+                                    .font(.footnote).multilineTextAlignment(.center)
+                            }
+                            HStack {
+                                Button("Skip") { advance() }
+                                Button("New set") { Task { await loadSentences() } }
+                            }
                         }
                     }.frame(maxWidth: .infinity)
                 }
@@ -94,11 +119,20 @@ struct TeachView: View {
             .padding()
         }
         .task {
+            await camera.configure()
             await refresh()
+            if queue.isEmpty { await loadSentences() }
             // Poll while visible so training status updates live.
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 await refresh()
+            }
+        }
+        .onDisappear { camera.stop() }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { editing = false }
             }
         }
     }

@@ -22,11 +22,26 @@ final class CameraController: NSObject, ObservableObject {
     private let maxSide: CGFloat = 480
     private let targetInterval = 0.039   // ~25 fps to match the model
 
+    private nonisolated(unsafe) var didSetup = false
+
+    /// Set up (once) and start the session. Call from a view's onAppear.
     func configure() async {
         let ok = await Self.requestCameraAccess()
         authorized = ok
         guard ok else { return }
-        queue.async { [weak self] in self?.setup() }
+        queue.async { [weak self] in
+            guard let self else { return }
+            if !self.didSetup { self.didSetup = true; self.setup() }
+            if !self.session.isRunning { self.session.startRunning() }
+        }
+    }
+
+    /// Stop the session when the view leaves the screen, so two tabs don't both
+    /// hold the camera (which leaves a frozen preview).
+    func stop() {
+        queue.async { [weak self] in
+            if self?.session.isRunning == true { self?.session.stopRunning() }
+        }
     }
 
     private func setup() {
@@ -39,7 +54,6 @@ final class CameraController: NSObject, ObservableObject {
         if session.canAddOutput(output) { session.addOutput(output) }
         addInput(for: position)
         session.commitConfiguration()
-        session.startRunning()
     }
 
     /// Swap the camera input for the given position and re-orient the output.
