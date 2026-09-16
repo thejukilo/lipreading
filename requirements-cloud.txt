@@ -1,0 +1,30 @@
+# Headless cloud-server dependencies (RunPod GPU pod / any CUDA container).
+#
+# torch / torchvision / torchaudio come from the CUDA base image
+# (pytorch/pytorch:*-cuda12.1-*), so they are NOT listed here.
+#
+# Excludes all desktop bits (PySide6, pyvirtualcam, pynput, sounddevice,
+# pygrabber, pyttsx3) — the phone/web client handles capture and playback.
+
+# --- model + media pipeline ---
+pytorch-lightning
+sentencepiece
+av
+mediapipe
+opencv-python-headless      # headless: no GUI libs needed server-side
+scikit-image
+numpy
+soundfile
+gdown                        # fetch checkpoints if not on the volume
+piper-tts                    # lightweight fallback voice
+voxcpm                       # default zero-shot voice cloning (needs CUDA >= 12)
+
+# --- API ---
+fastapi
+uvicorn[standard]
+sqlalchemy>=2.0
+psycopg[binary]>=3.1         # Supabase Postgres
+pyjwt>=2.8                   # Supabase JWT verification
+python-multipart
+bcrypt>=4.0                  # imported by the custom-auth fallback module
+email-validator

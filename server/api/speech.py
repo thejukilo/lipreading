@@ -61,6 +61,10 @@ class LocalSpeechService(SpeechService):
         # app last saved in ~/.lipreading/config.json (which may be the Dutch
         # model). Per-user private models still override this per request.
         self.cfg.checkpoint = BASE_CHECKPOINT
+        # In the cloud the auto_avsr checkout lives on a mounted volume.
+        auto = os.environ.get("LIPREADING_AUTO_AVSR_DIR")
+        if auto:
+            self.cfg.auto_avsr_dir = auto
         # Serializes GPU use between request inference and the training worker.
         self._lock = threading.Lock()
         self._engines: dict[str, object] = {}      # checkpoint path -> engine

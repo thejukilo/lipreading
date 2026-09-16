@@ -32,9 +32,11 @@ def _now() -> float:
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uid)
+    # 64 chars: fits our uuid4 hex (32) and Supabase auth UUIDs (36).
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=_uid)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255))
+    # Null for Supabase-provisioned users (Supabase holds the credential).
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     display_name: Mapped[str] = mapped_column(String(120), default="")
     created_at: Mapped[float] = mapped_column(Float, default=_now)
 

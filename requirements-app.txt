@@ -15,5 +15,6 @@ pyjwt>=2.8
 bcrypt>=4.0
 python-multipart
 email-validator          # pydantic EmailStr validation
+psycopg[binary]>=3.1     # Postgres driver (Supabase) — SQLite needs no driver
 # httpx is only needed to run the test suite (fastapi TestClient).
 httpx

@@ -69,3 +69,12 @@ RETRAIN_THRESHOLD = int(os.environ.get("LIPREADING_RETRAIN_THRESHOLD", "10"))
 # LIPREADING_BASE_CHECKPOINT to serve a different one (e.g. the Dutch model).
 BASE_CHECKPOINT = (os.environ.get("LIPREADING_BASE_CHECKPOINT")
                    or os.path.join("checkpoints", "vsr_trlrs2lrs3vox2avsp_base.pth"))
+
+# ---- Supabase (cloud) --------------------------------------------------------
+# When SUPABASE_JWT_SECRET is set, the API verifies Supabase-issued JWTs and
+# provisions users from the token, instead of its own email/password auth. Leave
+# unset for local custom-auth development. Find the secret in the Supabase
+# dashboard: Project Settings → API → JWT Settings → JWT Secret.
+SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET")
+SUPABASE_JWT_AUD = os.environ.get("SUPABASE_JWT_AUD", "authenticated")
+SUPABASE_URL = os.environ.get("SUPABASE_URL")            # for Storage (later phase)

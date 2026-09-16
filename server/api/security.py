@@ -50,3 +50,21 @@ def decode_token(token: str) -> str | None:
         return None
     sub = payload.get("sub")
     return sub if isinstance(sub, str) else None
+
+
+def verify_supabase_token(token: str) -> dict | None:
+    """Verify a Supabase-issued JWT (HS256, aud='authenticated'); return claims.
+
+    Supabase signs access tokens with the project's JWT secret. If the project
+    uses asymmetric (RS/ES) keys instead, this returns None and JWKS
+    verification would be needed — not wired yet.
+    """
+    from .config import SUPABASE_JWT_AUD, SUPABASE_JWT_SECRET
+
+    if not SUPABASE_JWT_SECRET:
+        return None
+    try:
+        return jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"],
+                          audience=SUPABASE_JWT_AUD)
+    except jwt.PyJWTError:
+        return None

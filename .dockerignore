@@ -1,0 +1,14 @@
+# Keep the image small: only server/ is copied in the Dockerfile, but this
+# guards against accidental large-context builds.
+.git
+.venv*
+__pycache__
+*.pyc
+third_party
+checkpoints
+data
+*.db
+node_modules
+docs
+tests
+.claude
