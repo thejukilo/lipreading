@@ -13,5 +13,5 @@ enum Config {
     /// Your backend base URL, no trailing slash.
     /// Dev:  your ngrok https URL (e.g. https://abcd-1234.ngrok-free.app)
     /// Prod: https://<pod>-8000.proxy.runpod.net
-    static let apiBaseURL=URL(string:"https://af61-31-165-106-25.ngrok-free.app ")!
+    static let apiBaseURL = URL(string: "https://af61-31-165-106-25.ngrok-free.app")!
 }
