@@ -108,11 +108,18 @@ struct TeachView: View {
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                         }
+                        Text("Tip: personalization needs variety — record many different sentences (20+), not a few repeated. Too few and it just memorizes those exact phrases.")
+                            .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         Button { Task { await trainNow() } } label: {
                             Text("Train now").frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
                         .disabled((teachStatus?.samples_total ?? 0) < 4)
+                        if teachStatus?.active_model_id != nil {
+                            Button("Use base model (undo personalization)", role: .destructive) {
+                                Task { await reset() }
+                            }.font(.footnote)
+                        }
                     }.frame(maxWidth: .infinity)
                 }
             }
@@ -194,6 +201,14 @@ struct TeachView: View {
         do {
             let j = try await api.teachTrain()
             status = "Training \(j.status)…"
+            await refresh()
+        } catch { status = error.localizedDescription }
+    }
+
+    private func reset() async {
+        do {
+            try await api.teachReset()
+            status = "Reverted to the base model."
             await refresh()
         } catch { status = error.localizedDescription }
     }

@@ -169,6 +169,18 @@ def status(user: User = Depends(get_current_user),
     )
 
 
+@router.post("/reset")
+def reset_personalization(user: User = Depends(get_current_user),
+                         db: Session = Depends(get_db)) -> dict:
+    """Deactivate the user's personalized model — Speak reverts to the base
+    model. Trained checkpoints and samples are kept; a future train re-activates
+    a fresh one."""
+    user.active_model_id = None
+    db.add(user)
+    db.commit()
+    return {"ok": True, "active_model_id": None}
+
+
 @router.post("/train", response_model=JobOut)
 def train_now(user: User = Depends(get_current_user),
               db: Session = Depends(get_db)) -> JobOut:

@@ -322,6 +322,11 @@ function initTeach() {
     try { const j = await api("/api/teach/train", { method: "POST" }); setStatus("teachStatus", `Training ${j.status}…`); $("statusBox").open = true; refreshTeachStatus(); }
     catch (e) { setStatus("teachStatus", detail(e), true); }
   };
+  $("resetModelBtn").onclick = async () => {
+    if (!confirm("Revert to the base model? Your recordings are kept.")) return;
+    try { await api("/api/teach/reset", { method: "POST" }); setStatus("teachStatus", "Reverted to the base model."); refreshTeachStatus(); }
+    catch (e) { setStatus("teachStatus", detail(e), true); }
+  };
   // Segmented record-mode switch.
   for (const b of document.querySelectorAll("#recMode button")) {
     b.onclick = () => {
@@ -466,6 +471,7 @@ async function refreshTeachStatus() {
     if (s.active_model_id) d += " Your private model is active. ✅";
     if (j && j.status === "failed" && j.error) d += ` Last run failed: ${j.error}`;
     $("trainDetail").textContent = d;
+    $("resetModelBtn").hidden = !s.active_model_id;
     // Step-2 hint + train button state.
     const enough = s.samples_total >= 4;
     $("trainHint").textContent = enough

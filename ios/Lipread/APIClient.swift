@@ -120,6 +120,13 @@ struct APIClient {
         try Self.check(resp, data)
     }
 
+    /// Deactivate the personalized model — Speak reverts to the base model.
+    func teachReset() async throws {
+        let req = try await authorized("api/teach/reset", method: "POST")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.check(resp, data)
+    }
+
     // MARK: - helpers
 
     private static func check(_ resp: URLResponse, _ data: Data) throws {

@@ -230,7 +230,9 @@
       <!-- STEP 2 — TRAIN -->
       <div class="step-h"><span class="n">2</span><h2>Train</h2></div>
       <p class="muted" style="margin:0;" id="trainHint">Record at least 4 clips, then train your private model.</p>
+      <p class="muted" style="margin:2px 0 0; font-size:12px;">Personalization needs variety — many different sentences (20+), not a few repeated. Too few and it just memorizes those exact phrases.</p>
       <button class="btn" id="trainNowBtn">Train now</button>
+      <button class="btn danger" id="resetModelBtn" hidden>Use base model (undo personalization)</button>
 
       <details class="collapse" id="statusBox">
         <summary>Training status <span class="muted" id="trainState">idle</span><span class="chev">▾</span></summary>
