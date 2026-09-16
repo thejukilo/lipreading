@@ -18,7 +18,7 @@ struct TeachView: View {
         ScrollView {
             VStack(spacing: 14) {
                 ZStack {
-                    CameraPreview(session: camera.session)
+                    CameraPreview(session: camera.session, mirrored: camera.position == .front)
                         .frame(width: 180, height: 180)
                         .clipShape(.rect(cornerRadius: 18))
                     RoundedRectangle(cornerRadius: 12)

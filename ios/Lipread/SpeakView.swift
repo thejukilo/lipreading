@@ -19,13 +19,28 @@ struct SpeakView: View {
         VStack(spacing: 12) {
             ZStack {
                 if camera.authorized {
-                    CameraPreview(session: camera.session).clipShape(.rect(cornerRadius: 16))
+                    CameraPreview(session: camera.session, mirrored: camera.position == .front)
+                        .clipShape(.rect(cornerRadius: 16))
                 } else {
                     RoundedRectangle(cornerRadius: 16).fill(.black)
                         .overlay(Text("Camera access needed").foregroundStyle(.white))
                 }
                 RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.3), style: .init(lineWidth: 2, dash: [8]))
                     .padding(40)
+                // Front/back toggle — back camera reads someone else's lips.
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button { camera.flip() } label: {
+                            Image(systemName: "arrow.triangle.2.circlepath.camera.fill")
+                                .font(.title2).padding(10)
+                                .background(.black.opacity(0.45)).foregroundStyle(.white)
+                                .clipShape(.circle)
+                        }
+                        .padding(12)
+                    }
+                    Spacer()
+                }
             }
             .frame(maxHeight: .infinity)
 

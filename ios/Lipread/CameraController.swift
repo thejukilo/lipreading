@@ -2,15 +2,18 @@ import AVFoundation
 import CoreImage
 import UIKit
 
-/// Front-camera capture. While `isRecording`, frames are throttled to ~25 fps
-/// (the model's training rate), delivered upright, downscaled and JPEG-encoded.
+/// Front/back camera capture. While `isRecording`, frames are throttled to
+/// ~25 fps (the model's rate), delivered upright, downscaled and JPEG-encoded.
+/// The back camera lets you read *someone else's* lips.
 @MainActor
 final class CameraController: NSObject, ObservableObject {
     @Published var authorized = false
+    @Published var position: AVCaptureDevice.Position = .front
     let session = AVCaptureSession()
 
     private let output = AVCaptureVideoDataOutput()
     private let queue = DispatchQueue(label: "camera.frames")
+    private var currentInput: AVCaptureDeviceInput?
     // Touched only on `queue`, so we manage the synchronization ourselves.
     private nonisolated(unsafe) let ciContext = CIContext()
     private nonisolated(unsafe) var recording = false
@@ -29,26 +32,39 @@ final class CameraController: NSObject, ObservableObject {
     private func setup() {
         session.beginConfiguration()
         session.sessionPreset = .vga640x480
-        if let cam = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front),
-           let input = try? AVCaptureDeviceInput(device: cam),
-           session.canAddInput(input) {
-            session.addInput(input)
-        }
+        // Add the output first so addInput() can orient its connection.
         output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
         output.alwaysDiscardsLateVideoFrames = true
         output.setSampleBufferDelegate(self, queue: queue)
         if session.canAddOutput(output) { session.addOutput(output) }
-        // Deliver upright (portrait) frames — the sensor is landscape by default,
-        // which would hand the mouth-crop a sideways face.
-        if let conn = output.connection(with: .video) {
-            if #available(iOS 17.0, *) {
-                if conn.isVideoRotationAngleSupported(90) { conn.videoRotationAngle = 90 }
-            } else if conn.isVideoOrientationSupported {
-                conn.videoOrientation = .portrait
-            }
-        }
+        addInput(for: position)
         session.commitConfiguration()
         session.startRunning()
+    }
+
+    /// Swap the camera input for the given position and re-orient the output.
+    private func addInput(for pos: AVCaptureDevice.Position) {
+        if let old = currentInput { session.removeInput(old) }
+        guard let cam = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: pos),
+              let input = try? AVCaptureDeviceInput(device: cam),
+              session.canAddInput(input) else { return }
+        session.addInput(input)
+        currentInput = input
+        if let conn = output.connection(with: .video), conn.isVideoOrientationSupported {
+            conn.videoOrientation = .portrait     // upright for both cameras
+        }
+    }
+
+    /// Flip between front and back camera.
+    func flip() {
+        let next: AVCaptureDevice.Position = (position == .front) ? .back : .front
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.session.beginConfiguration()
+            self.addInput(for: next)
+            self.session.commitConfiguration()
+            Task { @MainActor in self.position = next }
+        }
     }
 
     func startRecording() {
