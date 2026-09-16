@@ -59,11 +59,14 @@ struct AccountView: View {
                         .pickerStyle(.segmented)
                         .disabled(!i.has_personal || busy)
 
-                        if i.has_personal {
+                        if i.active == "personal" {
                             LabeledContent("Last trained", value: i.trained_at.map(Self.dateStr) ?? "—")
                             LabeledContent("Trained on", value: "\(i.n_samples ?? 0) clips")
+                        } else if i.has_personal {
+                            Text("The general model shipped with the app. Switch to Personalized to use your trained model.")
+                                .font(.footnote).foregroundStyle(.secondary)
                         } else {
-                            Text("No personalized model yet. Record varied sentences on Teach and train one.")
+                            Text("The general model shipped with the app. No personalized model yet — record varied sentences on Teach and train one.")
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
                         LabeledContent("Your recordings",
