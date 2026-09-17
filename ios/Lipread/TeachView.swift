@@ -14,6 +14,8 @@ struct TeachView: View {
     @State private var busy = false
     @State private var lastSampleId: String?
     @State private var lastPhrase = ""
+    @State private var reps = 3                          // takes per preset sentence
+    @State private var repDone = 0                       // takes done for current one
     @FocusState private var editing: Bool
 
     private var api: APIClient { APIClient(session: session) }
@@ -83,9 +85,11 @@ struct TeachView: View {
                                 target = queue.first ?? ""
                                 status = "Hold to record: \(target)"
                             } label: {
-                                Text("Now: “\(queue.first ?? "")” · \(queue.count) left")
+                                Text("Now: “\(queue.first ?? "")” · take \(min(repDone + 1, reps))/\(reps) · \(queue.count) left")
                                     .font(.footnote).multilineTextAlignment(.center)
                             }
+                            Stepper("Takes per sentence: \(reps)", value: $reps, in: 1...5)
+                                .font(.footnote)
                             HStack {
                                 Button("Skip") { advance() }
                                 Button("New set") { Task { await loadSentences() } }
@@ -218,8 +222,17 @@ struct TeachView: View {
             do {
                 let id = try await api.addSample(frames: frames, phrase: phrase)
                 lastSampleId = id; lastPhrase = phrase
-                status = "saved “\(phrase)” ✓ — wrong one? Discard it below."
-                if queue.first == phrase { advance() }
+                if queue.first == phrase {
+                    // Preset sentence: take several reps before moving on.
+                    repDone += 1
+                    if repDone >= reps {
+                        advance()   // clears repDone, sets next sentence
+                    } else {
+                        status = "saved take \(repDone)/\(reps) of “\(phrase)” — hold to record again."
+                    }
+                } else {
+                    status = "saved “\(phrase)” ✓ — wrong one? Discard it below."
+                }
                 await refresh()
             } catch {
                 status = error.localizedDescription
@@ -252,16 +265,18 @@ struct TeachView: View {
 
     private func advance() {
         if !queue.isEmpty { queue.removeFirst() }
+        repDone = 0
         target = queue.first ?? ""
         if target.isEmpty { status = "Round done — get more sentences, or train." }
-        else { status = "Read it aloud, holding the button." }
+        else { status = "Next: “\(target)” — record it \(reps)× (hold the button)." }
     }
 
     private func loadSentences() async {
         do {
             queue = try await api.teachSentences(n: 8)
+            repDone = 0
             target = queue.first ?? ""
-            status = "Read each one aloud, holding the button."
+            status = "Read each one \(reps)× aloud, holding the button."
         } catch { status = error.localizedDescription }
     }
 
