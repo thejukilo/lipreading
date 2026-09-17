@@ -49,10 +49,10 @@ struct VoicesView: View {
             TextField("Voice name (e.g. My voice)", text: $name)
                 .focused($editing)
 
-            Text("Read this aloud clearly:")
+            Text("Say anything in your normal voice for about 10 seconds — talk about your day, or read the suggestion below.")
                 .font(.caption).foregroundStyle(.secondary)
-            Text("“\(promptText)”")
-                .font(.callout).italic()
+            Text("Suggestion: “\(promptText)”")
+                .font(.callout).italic().foregroundStyle(.secondary)
 
             if rec.permissionDenied {
                 Text("Microphone access is off. Enable it in Settings › Lipread › Microphone.")
