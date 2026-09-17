@@ -22,29 +22,39 @@ enum Config {
     /// Active backend base URL (no trailing slash). Uses the in-app override
     /// from Account → Server if set, otherwise the compiled default. Read fresh
     /// on every request, so changes take effect immediately — no rebuild.
+    /// The override is stored already-normalized, so this never silently drops
+    /// it back to the default.
     static var apiBaseURL: URL {
-        if let s = UserDefaults.standard.string(forKey: apiOverrideKey),
-           let u = normalizedURL(s) {
+        if let s = UserDefaults.standard.string(forKey: apiOverrideKey), !s.isEmpty,
+           let u = URL(string: s) {
             return u
         }
         return defaultAPIBaseURL
     }
 
-    /// The stored override string ("" when none). Setting it persists to
-    /// UserDefaults; setting empty clears the override (back to the default).
-    static var apiBaseURLOverride: String {
-        get { UserDefaults.standard.string(forKey: apiOverrideKey) ?? "" }
-        set {
-            let t = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            if t.isEmpty {
-                UserDefaults.standard.removeObject(forKey: apiOverrideKey)
-            } else {
-                UserDefaults.standard.set(t, forKey: apiOverrideKey)
-            }
-        }
+    /// True when a custom server override is stored.
+    static var hasAPIOverride: Bool {
+        !(UserDefaults.standard.string(forKey: apiOverrideKey) ?? "").isEmpty
+    }
+
+    /// Save a user-entered base URL as the override. Returns the normalized URL
+    /// on success, or nil if it can't be parsed (nothing is saved on nil, so the
+    /// UI can show an error instead of silently reverting).
+    @discardableResult
+    static func setAPIOverride(_ raw: String) -> URL? {
+        guard let u = normalizedURL(raw), u.host != nil else { return nil }
+        UserDefaults.standard.set(u.absoluteString, forKey: apiOverrideKey)
+        return u
+    }
+
+    /// Remove the override; apiBaseURL falls back to the compiled default.
+    static func clearAPIOverride() {
+        UserDefaults.standard.removeObject(forKey: apiOverrideKey)
     }
 
     /// Normalize typed input: trim, add https:// if missing, drop trailing "/".
+    /// Uses `encodingInvalidCharacters` so a stray character percent-encodes
+    /// instead of making the whole URL nil.
     static func normalizedURL(_ raw: String) -> URL? {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !s.isEmpty else { return nil }
@@ -53,6 +63,6 @@ enum Config {
             s = "https://" + s
         }
         while s.hasSuffix("/") { s.removeLast() }
-        return URL(string: s)
+        return URL(string: s, encodingInvalidCharacters: true)
     }
 }

@@ -92,14 +92,23 @@ struct AccountView: View {
                         .font(.footnote)
                     HStack {
                         Button("Save & use") {
-                            Config.apiBaseURLOverride = serverField
-                            serverField = Config.apiBaseURL.absoluteString
-                            serverMsg = "Now using \(serverField)"
-                            Task { await load() }
+                            if let u = Config.setAPIOverride(serverField) {
+                                serverField = u.absoluteString
+                                serverMsg = "Saved — now using \(u.absoluteString)"
+                                Task { await load() }
+                            } else if serverField.trimmingCharacters(in: .whitespaces).isEmpty {
+                                Config.clearAPIOverride()
+                                serverField = Config.apiBaseURL.absoluteString
+                                serverMsg = "Reset to built-in default."
+                                Task { await load() }
+                            } else {
+                                // Keep the user's text so they can fix it.
+                                serverMsg = "Couldn't read that URL — not saved. Use the full https:// address."
+                            }
                         }
                         Spacer()
                         Button("Use default") {
-                            Config.apiBaseURLOverride = ""
+                            Config.clearAPIOverride()
                             serverField = Config.apiBaseURL.absoluteString
                             serverMsg = "Reset to built-in default."
                             Task { await load() }
