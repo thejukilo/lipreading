@@ -36,6 +36,15 @@ struct APIClient {
         let reps: Int
     }
 
+    struct Voice: Decodable, Identifiable {
+        let id: String
+        let name: String
+        let slug: String
+        let engine: String
+        let created_at: Double
+        let is_default: Bool
+    }
+
     struct ModelInfo: Decodable {
         let active: String            // "base" | "personal"
         let has_personal: Bool
@@ -157,6 +166,49 @@ struct APIClient {
         try Self.check(resp, data)
     }
 
+    // MARK: - Voices
+
+    func listVoices() async throws -> [Voice] {
+        let req = try await authorized("api/voices")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.check(resp, data)
+        return try JSONDecoder().decode([Voice].self, from: data)
+    }
+
+    /// Upload a recorded WAV clip as a new named voice (zero-shot clone).
+    func createVoice(name: String, wav: Data, engine: String = "voxcpm") async throws -> Voice {
+        var req = try await authorized("api/voices", method: "POST")
+        let boundary = "Boundary-\(UUID().uuidString)"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        req.httpBody = Self.multipartAudio(boundary: boundary, wav: wav,
+                                           fields: ["name": name, "engine": engine])
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.check(resp, data)
+        return try JSONDecoder().decode(Voice.self, from: data)
+    }
+
+    /// Make this voice the active speaker used by Speak.
+    func setDefaultVoice(id: String) async throws -> Voice {
+        let req = try await authorized("api/voices/\(id)/default", method: "POST")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.check(resp, data)
+        return try JSONDecoder().decode(Voice.self, from: data)
+    }
+
+    func deleteVoice(id: String) async throws {
+        let req = try await authorized("api/voices/\(id)", method: "DELETE")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.check(resp, data)
+    }
+
+    /// Fetch the stored reference WAV for preview playback.
+    func voiceReference(id: String) async throws -> Data {
+        let req = try await authorized("api/voices/\(id)/reference")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.check(resp, data)
+        return data
+    }
+
     // MARK: - Model
 
     func modelInfo() async throws -> ModelInfo {
@@ -199,6 +251,22 @@ struct APIClient {
             body.append(jpeg)
             append("\r\n")
         }
+        append("--\(boundary)--\r\n")
+        return body
+    }
+
+    private static func multipartAudio(boundary: String, wav: Data, fields: [String: String]) -> Data {
+        var body = Data()
+        func append(_ s: String) { body.append(s.data(using: .utf8)!) }
+        for (k, v) in fields {
+            append("--\(boundary)\r\n")
+            append("Content-Disposition: form-data; name=\"\(k)\"\r\n\r\n\(v)\r\n")
+        }
+        append("--\(boundary)\r\n")
+        append("Content-Disposition: form-data; name=\"audio\"; filename=\"reference.wav\"\r\n")
+        append("Content-Type: audio/wav\r\n\r\n")
+        body.append(wav)
+        append("\r\n")
         append("--\(boundary)--\r\n")
         return body
     }

@@ -7,7 +7,7 @@ struct ContentView: View {
         TabView {
             SpeakView()
                 .tabItem { Label("Speak", systemImage: "mouth") }
-            ComingSoon(title: "Voices")
+            VoicesView()
                 .tabItem { Label("Voices", systemImage: "mic") }
             TeachView()
                 .tabItem { Label("Teach", systemImage: "graduationcap") }

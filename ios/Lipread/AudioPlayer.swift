@@ -8,6 +8,11 @@ final class AudioPlayer: NSObject {
 
     func play(base64 wav: String) {
         guard let data = Data(base64Encoded: wav) else { return }
+        play(data: data)
+    }
+
+    /// Play raw WAV bytes (e.g. a voice reference preview).
+    func play(data: Data) {
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
