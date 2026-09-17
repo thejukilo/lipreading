@@ -143,6 +143,13 @@ struct APIClient {
         try Self.check(resp, data)
     }
 
+    /// Remove a practice phrase from the list.
+    func deletePractice(id: String) async throws {
+        let req = try await authorized("api/teach/practice/\(id)", method: "DELETE")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.check(resp, data)
+    }
+
     /// Deactivate the personalized model — Speak reverts to the base model.
     func teachReset() async throws {
         let req = try await authorized("api/teach/reset", method: "POST")

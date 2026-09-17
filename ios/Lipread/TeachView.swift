@@ -110,6 +110,11 @@ struct TeachView: View {
                                         target = p.text
                                         status = "Hold to record: \(p.text)"
                                     }.buttonStyle(.bordered)
+                                    Button(role: .destructive) {
+                                        Task { await deletePractice(p) }
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }.buttonStyle(.borderless)
                                 }
                             }
                         }
@@ -229,6 +234,16 @@ struct TeachView: View {
             try await api.deleteSample(id: id)
             status = "Discarded “\(lastPhrase)”."
             lastSampleId = nil
+            await refresh()
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
+    private func deletePractice(_ p: APIClient.PracticePhrase) async {
+        do {
+            try await api.deletePractice(id: p.id)
+            if target == p.text { target = ""; status = "Removed “\(p.text)”." }
             await refresh()
         } catch {
             status = error.localizedDescription
