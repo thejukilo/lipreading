@@ -113,6 +113,14 @@ def create_app() -> FastAPI:
     def icon():
         return _web("icon.svg", "image/svg+xml")
 
+    @app.get("/icon-192.png", include_in_schema=False)
+    def icon_192():
+        return _web("icon-192.png", "image/png")
+
+    @app.get("/icon-512.png", include_in_schema=False)
+    def icon_512():
+        return _web("icon-512.png", "image/png")
+
     return app
 
 

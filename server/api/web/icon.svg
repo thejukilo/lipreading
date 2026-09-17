@@ -1,12 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#0d0f14"/>
-  <g fill="none" stroke="#37d67a" stroke-width="26" stroke-linecap="round" stroke-linejoin="round">
-    <!-- stylized lips -->
-    <path d="M120 268 Q256 188 392 268 Q256 348 120 268 Z"/>
-    <path d="M120 268 Q256 300 392 268"/>
-  </g>
-  <g fill="#37d67a">
-    <circle cx="196" cy="196" r="16"/>
-    <circle cx="316" cy="196" r="16"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#162735"/>
+      <stop offset="1" stop-color="#0b0e13"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <g transform="translate(512 512) scale(1.06) translate(-612 -512)">
+    <g fill="#37d67a">
+      <path d="M212 512
+               C 300 446, 400 448, 470 492
+               C 492 470, 532 470, 554 492
+               C 624 448, 724 446, 812 512
+               C 724 500, 616 502, 512 514
+               C 408 502, 300 500, 212 512 Z"/>
+      <path d="M212 512
+               C 316 606, 452 640, 512 640
+               C 572 640, 708 606, 812 512
+               C 712 544, 606 558, 512 558
+               C 418 558, 312 544, 212 512 Z"/>
+    </g>
+    <g fill="none" stroke="#37d67a" stroke-width="30" stroke-linecap="round">
+      <path d="M858 452 Q922 512 858 572"/>
+      <path d="M918 414 Q1012 512 918 610"/>
+    </g>
   </g>
 </svg>
