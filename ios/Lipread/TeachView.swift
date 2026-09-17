@@ -12,9 +12,20 @@ struct TeachView: View {
     @State private var status = "Read sentences, or practice a correction, then train."
     @State private var isRecording = false
     @State private var busy = false
+    @State private var lastSampleId: String?
+    @State private var lastPhrase = ""
     @FocusState private var editing: Bool
 
     private var api: APIClient { APIClient(session: session) }
+
+    private var jobActive: Bool {
+        let s = teachStatus?.latest_job?.status
+        return s == "queued" || s == "running"
+    }
+    private var lastLogLine: String? {
+        teachStatus?.latest_job?.log?
+            .split(separator: "\n").last.map(String.init)
+    }
 
     var body: some View {
         ScrollView {
@@ -37,6 +48,15 @@ struct TeachView: View {
 
                 holdButton
                 Text(status).font(.footnote).foregroundStyle(.secondary)
+
+                if lastSampleId != nil {
+                    Button(role: .destructive) {
+                        Task { await discardLast() }
+                    } label: {
+                        Label("Discard that recording", systemImage: "trash")
+                    }
+                    .font(.footnote)
+                }
 
                 // Your own sentence
                 GroupBox("Train your own sentence") {
@@ -106,18 +126,39 @@ struct TeachView: View {
                                 Text("Your private model is active ✅")
                                     .font(.footnote).foregroundStyle(.green)
                             }
-                            if let job = s.latest_job {
-                                Text("Last training: \(job.status)")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
                         }
-                        Text("Tip: personalization needs variety — record many different sentences (20+), not a few repeated. Too few and it just memorizes those exact phrases.")
-                            .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
+
+                        if jobActive {
+                            // Live progress while a run is in flight.
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text(teachStatus?.latest_job?.status == "queued"
+                                     ? "Queued…" : "Training…")
+                                    .font(.footnote)
+                            }
+                            if let line = lastLogLine {
+                                Text(line)
+                                    .font(.caption2.monospaced()).foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                        } else {
+                            if let job = teachStatus?.latest_job {
+                                Text(job.status == "failed"
+                                     ? "Last training failed\(job.error.map { ": \($0)" } ?? "")"
+                                     : "Last training: \(job.status)")
+                                    .font(.caption)
+                                    .foregroundStyle(job.status == "failed" ? .red : .secondary)
+                            }
+                            Text("Tip: personalization needs variety — record many different sentences (20+), not a few repeated.")
+                                .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        }
+
                         Button { Task { await trainNow() } } label: {
-                            Text("Train now").frame(maxWidth: .infinity)
+                            Text(jobActive ? "Training in progress…" : "Train now")
+                                .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled((teachStatus?.samples_total ?? 0) < 4)
+                        .disabled(jobActive || (teachStatus?.samples_total ?? 0) < 4)
                     }.frame(maxWidth: .infinity)
                 }
             }
@@ -127,9 +168,10 @@ struct TeachView: View {
             await camera.configure()
             await refresh()
             if queue.isEmpty { await loadSentences() }
-            // Poll while visible so training status updates live.
+            // Poll while visible; faster while a training run is active.
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                let delay: UInt64 = jobActive ? 2_000_000_000 : 5_000_000_000
+                try? await Task.sleep(nanoseconds: delay)
                 await refresh()
             }
         }
@@ -169,14 +211,27 @@ struct TeachView: View {
             if frames.count < 8 { status = "too short — hold a bit longer"; busy = false; return }
             status = "saving… (\(frames.count) frames)"
             do {
-                try await api.addSample(frames: frames, phrase: phrase)
-                status = "saved ✓"
+                let id = try await api.addSample(frames: frames, phrase: phrase)
+                lastSampleId = id; lastPhrase = phrase
+                status = "saved “\(phrase)” ✓ — wrong one? Discard it below."
                 if queue.first == phrase { advance() }
                 await refresh()
             } catch {
                 status = error.localizedDescription
             }
             busy = false
+        }
+    }
+
+    private func discardLast() async {
+        guard let id = lastSampleId else { return }
+        do {
+            try await api.deleteSample(id: id)
+            status = "Discarded “\(lastPhrase)”."
+            lastSampleId = nil
+            await refresh()
+        } catch {
+            status = error.localizedDescription
         }
     }
 

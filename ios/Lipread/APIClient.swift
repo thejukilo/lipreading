@@ -58,7 +58,11 @@ struct APIClient {
 
     private func authorized(_ path: String, method: String = "GET") async throws -> URLRequest {
         guard let token = await session.accessToken() else { throw APIError.notAuthenticated }
-        var req = URLRequest(url: Config.apiBaseURL.appendingPathComponent(path))
+        // Build by string so query params (?n=8) aren't percent-escaped into the path.
+        guard let url = URL(string: Config.apiBaseURL.absoluteString + "/" + path) else {
+            throw APIError.server("bad url")
+        }
+        var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         return req
@@ -79,13 +83,23 @@ struct APIClient {
         return try JSONDecoder().decode(UtterResponse.self, from: data)
     }
 
-    /// POST a labeled clip as a training sample (used by "add to training").
-    func addSample(frames: [Data], phrase: String, fps: Int = 25) async throws {
+    /// POST a labeled clip as a training sample. Returns the new sample id.
+    @discardableResult
+    func addSample(frames: [Data], phrase: String, fps: Int = 25) async throws -> String {
+        struct Out: Decodable { let sample_id: String }
         var req = try await authorized("api/teach/samples", method: "POST")
         let boundary = "Boundary-\(UUID().uuidString)"
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         req.httpBody = Self.multipart(boundary: boundary, frames: frames,
                                       fields: ["phrase": phrase, "fps": String(fps)])
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try Self.check(resp, data)
+        return try JSONDecoder().decode(Out.self, from: data).sample_id
+    }
+
+    /// Delete a recorded training clip by id (discard a bad take).
+    func deleteSample(id: String) async throws {
+        let req = try await authorized("api/teach/samples/\(id)", method: "DELETE")
         let (data, resp) = try await URLSession.shared.data(for: req)
         try Self.check(resp, data)
     }
