@@ -33,6 +33,8 @@ struct AccountView: View {
     @State private var busy = false
     @State private var msg = ""
     @State private var loadError: String?
+    @State private var serverField = Config.apiBaseURL.absoluteString
+    @State private var serverMsg = ""
 
     private var api: APIClient { APIClient(session: session) }
 
@@ -80,6 +82,35 @@ struct AccountView: View {
                     if !msg.isEmpty {
                         Text(msg).font(.footnote).foregroundStyle(.secondary)
                     }
+                }
+
+                Section("Server (testing)") {
+                    TextField("https://xxxx.ngrok-free.app", text: $serverField)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .font(.footnote)
+                    HStack {
+                        Button("Save & use") {
+                            Config.apiBaseURLOverride = serverField
+                            serverField = Config.apiBaseURL.absoluteString
+                            serverMsg = "Now using \(serverField)"
+                            Task { await load() }
+                        }
+                        Spacer()
+                        Button("Use default") {
+                            Config.apiBaseURLOverride = ""
+                            serverField = Config.apiBaseURL.absoluteString
+                            serverMsg = "Reset to built-in default."
+                            Task { await load() }
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                    if !serverMsg.isEmpty {
+                        Text(serverMsg).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text("Point the app at your current ngrok URL without rebuilding. Applies immediately.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("Account")
