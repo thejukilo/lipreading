@@ -90,31 +90,35 @@ struct AccountView: View {
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
                         .font(.footnote)
-                    HStack {
-                        Button("Save & use") {
-                            if let u = Config.setAPIOverride(serverField) {
-                                serverField = u.absoluteString
-                                serverMsg = "Saved — now using \(u.absoluteString)"
-                                Task { await load() }
-                            } else if serverField.trimmingCharacters(in: .whitespaces).isEmpty {
-                                Config.clearAPIOverride()
-                                serverField = Config.apiBaseURL.absoluteString
-                                serverMsg = "Reset to built-in default."
-                                Task { await load() }
-                            } else {
-                                // Keep the user's text so they can fix it.
-                                serverMsg = "Couldn't read that URL — not saved. Use the full https:// address."
-                            }
-                        }
-                        Spacer()
-                        Button("Use default") {
+                    Button {
+                        if let u = Config.setAPIOverride(serverField) {
+                            serverField = u.absoluteString
+                            serverMsg = "Saved — now using \(u.absoluteString)"
+                            Task { await load() }
+                        } else if serverField.trimmingCharacters(in: .whitespaces).isEmpty {
                             Config.clearAPIOverride()
                             serverField = Config.apiBaseURL.absoluteString
                             serverMsg = "Reset to built-in default."
                             Task { await load() }
+                        } else {
+                            // Keep the user's text so they can fix it.
+                            serverMsg = "Couldn't read that URL — not saved. Use the full https:// address."
                         }
-                        .foregroundStyle(.secondary)
+                    } label: {
+                        Label("Save & use this server", systemImage: "checkmark.circle")
+                            .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.borderedProminent)
+
+                    Button {
+                        Config.clearAPIOverride()
+                        serverField = Config.apiBaseURL.absoluteString
+                        serverMsg = "Reset to built-in default."
+                        Task { await load() }
+                    } label: {
+                        Text("Use built-in default").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
                     if !serverMsg.isEmpty {
                         Text(serverMsg).font(.caption).foregroundStyle(.secondary)
                     }
