@@ -28,3 +28,4 @@ env/
 *.db
 lipreading.db
 server/api/**/__pycache__/
+env.local.bat
