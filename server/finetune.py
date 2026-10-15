@@ -96,8 +96,13 @@ class _ClipDataset:
             if on_msg:
                 on_msg(f"preparing clip {i + 1}/{len(entries)}: “{e['phrase']}”")
             frames = store.load_clip(e["clip"])          # (T,H,W,3) RGB
-            landmarks = engine.landmarks_detector(frames)
-            crop = engine.video_process(frames, landmarks)  # (T,96,96,3)
+            try:
+                landmarks = engine.landmarks_detector(frames)
+                crop = engine.video_process(frames, landmarks)  # (T,96,96,3)
+            except Exception:  # no face detected in this clip -> skip, don't fail the job
+                if on_msg:
+                    on_msg(f"skipped “{e['phrase']}” (no face detected)")
+                continue
             if crop is None:
                 if on_msg:
                     on_msg(f"skipped “{e['phrase']}” (no face detected)")
@@ -209,7 +214,9 @@ def finetune(
 
     ds = _ClipDataset(store, engine, VideoTransform("train"), TextTransform(), on_msg=msg)
     if len(ds) < 4:
-        raise RuntimeError("Too few usable clips after mouth-crop — check framing/lighting.")
+        raise RuntimeError("Too few usable clips after mouth-crop — some had no "
+                           "detectable face. Re-record a few with your face centered "
+                           "and good lighting, then train again.")
     if n_phrases < 2:
         msg("⚠ only one distinct phrase — the model may over-focus on it; "
             "add more varied phrases/sentences for a balanced result.")
