@@ -37,6 +37,15 @@ _WEB = os.path.join(os.path.dirname(__file__), "web")
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     init_db()
+
+    # Make the auth mode obvious at startup — a common cause of 401s is the
+    # server running without SUPABASE_URL, so it rejects the app's Supabase token.
+    from .config import supabase_enabled, SUPABASE_JWKS_URL
+    if supabase_enabled():
+        print(f"[startup] auth: Supabase ENABLED (JWKS {SUPABASE_JWKS_URL})")
+    else:
+        print("[startup] auth: Supabase DISABLED — using local custom auth. "
+              "Set SUPABASE_URL or the app's token will be rejected (401).")
     worker = None
     # Preload the model on the MAIN thread here (before any request), so the
     # native import chain (transformers->pandas->pyarrow) happens on the main
