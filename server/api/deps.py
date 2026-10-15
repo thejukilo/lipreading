@@ -52,6 +52,15 @@ def get_current_user(
                             detail="missing bearer token")
     token = authorization.split(" ", 1)[1].strip()
 
+    # Diagnostic: show exactly what token the server got (alg + kid + length).
+    try:
+        import jwt as _jwt
+        _h = _jwt.get_unverified_header(token)
+        print(f"[auth] recv token alg={_h.get('alg')} kid={_h.get('kid')} "
+              f"len={len(token)} supabase_mode={supabase_enabled()}")
+    except Exception as _e:  # noqa: BLE001
+        print(f"[auth] recv token UNPARSEABLE len={len(token)}: {_e}")
+
     if supabase_enabled():
         claims = verify_supabase_token(token)
         if not claims or not isinstance(claims.get("sub"), str):
