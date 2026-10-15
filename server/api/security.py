@@ -85,6 +85,8 @@ def verify_supabase_token(token: str) -> dict | None:
     try:
         if alg == "HS256":
             if not SUPABASE_JWT_SECRET:
+                print("[auth] token is HS256 but SUPABASE_JWT_SECRET is not set "
+                      "— set it (Supabase > Settings > API > JWT Secret).")
                 return None
             return jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"],
                               audience=SUPABASE_JWT_AUD, leeway=120,
