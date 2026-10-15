@@ -87,16 +87,20 @@ def verify_supabase_token(token: str) -> dict | None:
             if not SUPABASE_JWT_SECRET:
                 return None
             return jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"],
-                              audience=SUPABASE_JWT_AUD)
+                              audience=SUPABASE_JWT_AUD, leeway=120,
+                              options={"verify_aud": False})
         # Asymmetric: fetch the matching public key by 'kid' from the JWKS.
         client = _jwk_client()
         if client is None:
             return None
         key = client.get_signing_key_from_jwt(token).key
         return jwt.decode(token, key, algorithms=["ES256", "RS256"],
-                          audience=SUPABASE_JWT_AUD)
-    except jwt.PyJWTError:
+                          audience=SUPABASE_JWT_AUD, leeway=120,
+                          options={"verify_aud": False})
+    except jwt.PyJWTError as e:
+        print(f"[auth] token rejected: {type(e).__name__}: {e}")
         return None
-    except Exception:
+    except Exception as e:
         # JWKS fetch failure etc. — treat as unverifiable rather than 500.
+        print(f"[auth] token verify error: {type(e).__name__}: {e}")
         return None
